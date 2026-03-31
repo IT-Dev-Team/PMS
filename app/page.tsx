@@ -12,25 +12,50 @@ export default function Home() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
-    // Check if user is already logged in (from localStorage)
-    const savedAuth = localStorage.getItem('eih_auth');
-    if (savedAuth) {
-      const auth = JSON.parse(savedAuth);
-      setUser(auth);
-      setIsAuthenticated(true);
-    }
+    // Small delay to ensure DOM is ready
+    const timer = setTimeout(() => {
+      try {
+        // Check if user is already logged in (from localStorage)
+        const savedAuth = localStorage.getItem('eih_auth');
+        if (savedAuth) {
+          try {
+            const auth = JSON.parse(savedAuth);
+            setUser(auth);
+            setIsAuthenticated(true);
+          } catch (e) {
+            // Clear invalid data
+            localStorage.removeItem('eih_auth');
+          }
+        }
+      } catch (e) {
+        console.warn('LocalStorage access failed:', e);
+      }
+      setMounted(true);
+    }, 0);
+
+    return () => clearTimeout(timer);
   }, []);
 
   const handleLogin = (email: string) => {
-    const userData = { email };
-    localStorage.setItem('eih_auth', JSON.stringify(userData));
-    setUser(userData);
-    setIsAuthenticated(true);
+    try {
+      const userData = { email };
+      localStorage.setItem('eih_auth', JSON.stringify(userData));
+      setUser(userData);
+      setIsAuthenticated(true);
+    } catch (e) {
+      console.error('Failed to save auth data:', e);
+      // Still proceed with login even if localStorage fails
+      setUser({ email });
+      setIsAuthenticated(true);
+    }
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('eih_auth');
+    try {
+      localStorage.removeItem('eih_auth');
+    } catch (e) {
+      console.warn('Failed to clear auth data:', e);
+    }
     setUser(null);
     setIsAuthenticated(false);
   };
@@ -39,8 +64,8 @@ export default function Home() {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin inline-block">
-            <div className="w-12 h-12 rounded-full border-2 border-accent border-t-transparent"></div>
+          <div className="inline-block">
+            <div className="w-12 h-12 rounded-full border-2 border-accent border-t-transparent animate-spin"></div>
           </div>
           <p className="mt-4 text-muted-foreground">Loading...</p>
         </div>

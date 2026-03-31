@@ -18,7 +18,6 @@ export function ChatInterface() {
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [attachedFiles, setAttachedFiles] = useState<FileInfo[]>([]);
-  const [lastResponse, setLastResponse] = useState('');
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -59,12 +58,16 @@ export function ChatInterface() {
   const handleSendMessage = async () => {
     if (!input.trim() || loading) return;
 
+    // Capture input before clearing
+    const userInput = input;
+    const files = [...attachedFiles];
+
     const userMessage: Message = {
       id: `msg_${Date.now()}`,
       role: 'user',
-      content: input,
+      content: userInput,
       timestamp: new Date(),
-      attachments: attachedFiles.map((f) => ({
+      attachments: files.map((f) => ({
         id: f.id,
         name: f.name,
         type: f.type,
@@ -77,7 +80,7 @@ export function ChatInterface() {
     addMessage(userMessage);
 
     // Add attached files as chat attachments
-    attachedFiles.forEach((file) => {
+    files.forEach((file) => {
       addAttachment({
         id: file.id,
         name: file.name,
@@ -87,17 +90,18 @@ export function ChatInterface() {
       });
     });
 
-    // Update chat title if it's the first message
-    if (currentChat.messages.length === 0) {
-      const title = await generateTitle(input);
-      updateChatTitle(currentChat.id, title);
-    }
-
+    // Clear input immediately
     setInput('');
     setAttachedFiles([]);
     setLoading(true);
 
     try {
+      // Update chat title if it's the first message
+      if (currentChat.messages.length === 0) {
+        const title = await generateTitle(userInput);
+        updateChatTitle(currentChat.id, title);
+      }
+
       // Build context from chat history
       const messages = currentChat.messages.map((msg) => ({
         role: msg.role as 'user' | 'assistant' | 'system',
@@ -107,7 +111,7 @@ export function ChatInterface() {
       // Add current message
       messages.push({
         role: 'user' as const,
-        content: input,
+        content: userInput,
       });
 
       // Stream response
@@ -115,8 +119,6 @@ export function ChatInterface() {
       await chatWithDeepSeek(messages, (chunk) => {
         fullResponse += chunk;
       });
-
-      setLastResponse(fullResponse);
 
       // Add assistant message
       const assistantMessage: Message = {
@@ -240,7 +242,6 @@ export function ChatInterface() {
             onTranscript={(text) => {
               setInput((prev) => (prev ? prev + ' ' + text : text));
             }}
-            onSpeakText={lastResponse ? () => {} : undefined}
             disabled={loading}
           />
         </div>
