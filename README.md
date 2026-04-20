@@ -338,3 +338,5 @@ For issues, questions, or suggestions:
 ---
 
 **Built with ❤️ using Next.js, Supabase, and Google Gemini**
+#   c h a t b o t A I  
+ 
