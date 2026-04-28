@@ -139,8 +139,7 @@ export async function GET(
         true,
         request.headers.get('x-forwarded-for') || 
         request.headers.get('x-real-ip') || 
-       // request.ip || 
-       // 'unknown',
+        'unknown',
         request.headers.get('user-agent') || 'unknown',
         request.headers.get('referer') || null
       ]

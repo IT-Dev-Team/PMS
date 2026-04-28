@@ -1,5 +1,5 @@
+// app/api/auth/me/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
 import jwt from 'jsonwebtoken'
 import pool from '@/lib/db'
 
@@ -9,78 +9,74 @@ export async function GET(request: NextRequest) {
   let client;
   
   try {
-    const cookieStore = await cookies()
-    const token = cookieStore.get('token')?.value
+    // Get token from cookies
+    const token = request.cookies.get('token')?.value
     
-    console.log('Auth check - Token exists:', !!token)
+    console.log('Token from cookie:', token ? 'Present' : 'Missing')
     
     if (!token) {
       return NextResponse.json(
-        { error: 'Not authenticated', user: null },
+        { error: 'Unauthorized - No token provided' },
         { status: 401 }
       )
     }
     
-    // Verify JWT token
+    // Verify token
     let decoded
     try {
       decoded = jwt.verify(token, JWT_SECRET)
       console.log('Decoded token:', decoded)
-      console.log('User ID:', decoded.userId) // Make sure to extract userId
     } catch (error) {
-      console.error('Token verification failed:', error.message)
+      console.error('Token verification failed:', error)
       return NextResponse.json(
-        { error: 'Invalid token', user: null },
+        { error: 'Unauthorized - Invalid token' },
         { status: 401 }
       )
     }
     
-    // Extract userId from the decoded token - THIS IS THE KEY FIX
-    const userId = decoded.userId
+    const userId = decoded.userId || decoded.id
     
     if (!userId) {
-      console.error('No userId in token')
       return NextResponse.json(
-        { error: 'Invalid token payload', user: null },
+        { error: 'Unauthorized - Invalid token payload' },
         { status: 401 }
       )
     }
     
-    console.log('Looking for user with ID:', userId)
-    
-    // Get fresh user data from database - pass ONLY the userId string
     client = await pool.connect()
+    
+    // Get user from database
     const result = await client.query(
-      `SELECT id, email, name, avatar_url, created_at
+      `SELECT id, email, name, avatar_url, created_at, manus_project_id
        FROM users
        WHERE id = $1`,
-      [userId] // Pass ONLY the userId string, not the entire decoded object
+      [userId]
     )
-    
-    console.log('Query result rows:', result.rows.length)
     
     if (result.rows.length === 0) {
       return NextResponse.json(
-        { error: 'User not found', user: null },
+        { error: 'User not found' },
         { status: 404 }
       )
     }
     
     const user = result.rows[0]
     
-    return NextResponse.json({ 
-      success: true, 
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        avatar_url: user.avatar_url,
-      }
+    console.log('User found:', { id: user.id, email: user.email, name: user.name })
+    
+    return NextResponse.json({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      avatar_url: user.avatar_url,
+      created_at: user.created_at,
+      manusProjectId: user.manus_project_id
     })
+    
   } catch (error) {
-    console.error('Auth me error:', error)
+    console.error('Error fetching user:', error)
     return NextResponse.json(
-      { error: 'Internal server error', user: null },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   } finally {

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { 
   Menu, 
+  LogOut,
   Share2, 
   Download, 
   MoreVertical, 
@@ -48,6 +49,7 @@ import { toast } from 'sonner'
 import useSWR, { useSWRConfig } from 'swr'
 
 interface TopBarProps {
+  onLogout?: () => void
   onToggleSidebar: () => void
   user?: {
     id: string
@@ -71,7 +73,7 @@ interface Chat {
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
-export function TopBar({ onToggleSidebar, user, chatTitle, onChatUpdate }: TopBarProps) {
+export function TopBar({ onToggleSidebar, user, chatTitle, onLogout, onChatUpdate }: TopBarProps) {
   const params = useParams()
   const router = useRouter()
   const chatId = params.id as string
@@ -92,6 +94,8 @@ export function TopBar({ onToggleSidebar, user, chatTitle, onChatUpdate }: TopBa
   const [archiveLoading, setArchiveLoading] = useState(false)
   const [starLoading, setStarLoading] = useState(false)
   const [isDarkMode, setIsDarkMode] = useState(false)
+  const [logoutLoading, setLogoutLoading] = useState(false)
+  const [userMenuOpen, setUserMenuOpen] = useState(false) // Add this line
 
   // Fetch chat details
   const { data: chat, mutate: mutateChat } = useSWR<Chat>(
@@ -118,6 +122,68 @@ export function TopBar({ onToggleSidebar, user, chatTitle, onChatUpdate }: TopBa
     toast.success(`${newDarkMode ? 'Dark' : 'Light'} mode enabled`)
   }
 
+  // Handle logout with proper API call
+  const handleLogout = async () => {
+    try {
+      setLogoutLoading(true)
+      
+      const response = await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Logout failed')
+      }
+
+      // Clear client-side storage
+      localStorage.removeItem('remembered_email')
+      sessionStorage.clear()
+      
+      // Clear SWR cache
+      await mutate(() => true, undefined, { revalidate: false })
+      
+      toast.success('Logged out successfully')
+      
+      // Call parent logout handler if provided
+      if (onLogout) {
+        onLogout()
+      }
+      
+      // Redirect to login page
+      router.push('/auth/login')
+      router.refresh()
+      
+    } catch (error) {
+      console.error('Logout error:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to logout. Please try again.')
+    } finally {
+      setLogoutLoading(false)
+      setUserMenuOpen(false)
+    }
+  }
+ const handleGoToAdmin = async () => {
+  try {
+  
+    setUserMenuOpen(false)
+    
+    // Optional: Check if user is admin before redirecting
+    // You can add an API call here to verify admin status
+    
+    // Open admin panel in a new tab
+    window.open('/admin', '_blank', 'noopener,noreferrer')
+    
+    toast.success('Opening admin panel in new tab')
+  } catch (error) {
+    console.error('Navigation error:', error)
+    toast.error('Failed to open admin panel')
+  } finally {
+  
+  }
+}
   const handleShare = async () => {
     try {
       setLoading(true)
@@ -138,7 +204,8 @@ export function TopBar({ onToggleSidebar, user, chatTitle, onChatUpdate }: TopBa
       }
 
       const data = await response.json()
-      setShareUrl(`${window.location.origin}/share/${data.shareId}`)
+      console.log(data);
+      setShareUrl(`${data.shareUrl}`)
       toast.success('Share link created successfully!')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to create share link')
@@ -304,7 +371,7 @@ export function TopBar({ onToggleSidebar, user, chatTitle, onChatUpdate }: TopBa
   const getUserInitial = () => {
     if (user?.name) return user.name.charAt(0).toUpperCase()
     if (user?.email) return user.email.charAt(0).toUpperCase()
-    return 'U'
+    return 'G' // Guest
   }
 
   return (
@@ -316,17 +383,14 @@ export function TopBar({ onToggleSidebar, user, chatTitle, onChatUpdate }: TopBa
             className="p-2 hover:bg-accent rounded-lg transition-all duration-200 hover:scale-105"
             aria-label="Toggle sidebar"
           >
-               <img src="/eih.png" alt="Logo" className="w-10 h-10 object-contain" />
           </button>
           
           {/* Chat Title */}
           <div className="hidden md:flex items-center gap-2">
             <h2 className="text-lg font-semibold text-foreground">
-              {getDisplayTitle()}
+              EIH AI Assistant
             </h2>
-            {chat?.summarized_title && chat.summarized_title !== chat.title && (
-              <Sparkles className="w-4 h-4 text-primary animate-pulse" />
-            )}
+           
           </div>
         </div>
 
@@ -348,52 +412,6 @@ export function TopBar({ onToggleSidebar, user, chatTitle, onChatUpdate }: TopBa
             )}
           </Button>
 
-          {/* User Info */}
-          {user && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="hidden md:flex items-center gap-2 ml-2 px-2 py-1 rounded-lg hover:bg-accent transition-colors">
-                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center">
-                    <span className="text-xs font-medium text-primary-foreground">
-                      {getUserInitial()}
-                    </span>
-                  </div>
-                  <span className="text-sm text-foreground truncate max-w-[120px]">
-                    {user.name || user.email?.split('@')[0]}
-                  </span>
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56 bg-popover border-border">
-                <DropdownMenuLabel className="text-foreground">
-                  {user.name || user.email}
-                </DropdownMenuLabel>
-                <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
-                  {user.email}
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-foreground cursor-pointer hover:bg-accent">
-                  <Users className="w-4 h-4 mr-2" />
-                  Profile Settings
-                </DropdownMenuItem>
-                <DropdownMenuItem className="text-foreground cursor-pointer hover:bg-accent">
-                  <Bell className="w-4 h-4 mr-2" />
-                  Notifications
-                </DropdownMenuItem>
-                <DropdownMenuItem 
-                  onClick={toggleDarkMode}
-                  className="text-foreground cursor-pointer hover:bg-accent"
-                >
-                  {isDarkMode ? (
-                    <Sun className="w-4 h-4 mr-2" />
-                  ) : (
-                    <Moon className="w-4 h-4 mr-2" />
-                  )}
-                  {isDarkMode ? 'Light Mode' : 'Dark Mode'}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-
           {/* Share Button */}
           <Button
             onClick={() => setShareDialogOpen(true)}
@@ -405,100 +423,92 @@ export function TopBar({ onToggleSidebar, user, chatTitle, onChatUpdate }: TopBa
             <span className="hidden sm:inline">Share</span>
           </Button>
 
-          {/* Export Dropdown */}
-          <DropdownMenu>
+      
+          {/* User Menu with Logout */}
+          <DropdownMenu open={userMenuOpen} onOpenChange={setUserMenuOpen}>
             <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground hover:text-foreground hover:bg-accent"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                <span className="hidden sm:inline">Export</span>
-              </Button>
+              <button className="hidden md:flex items-center gap-2 ml-2 px-2 py-1 rounded-lg hover:bg-accent transition-colors">
+                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center">
+                  <span className="text-xs font-medium text-primary-foreground">
+                    {getUserInitial()}
+                  </span>
+                </div>
+                <span className="text-sm text-foreground truncate max-w-[120px]">
+                  {user ? (user.name || user.email?.split('@')[0]) : 'Guest'}
+                </span>
+              </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="bg-popover border-border min-w-[180px]">
-              <DropdownMenuLabel className="text-xs text-muted-foreground">
-                Export Format
-              </DropdownMenuLabel>
+            <DropdownMenuContent align="end" className="w-56 bg-popover border-border">
+              {user ? (
+                <>
+                  <DropdownMenuLabel className="text-foreground">
+                    {user.name || user.email}
+                  </DropdownMenuLabel>
+                  <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
+                    {user.email}
+                  </DropdownMenuLabel>
+             
+                </>
+              ) : (
+                <DropdownMenuLabel className="text-foreground">
+                  Guest User
+                </DropdownMenuLabel>
+              )}
               <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => handleExport('markdown')}
-                className="text-foreground cursor-pointer hover:bg-accent"
+              <DropdownMenuItem 
+  className="cursor-pointer hover:bg-accent"
+  onClick={handleGoToAdmin}
+>
+  
+    <Settings className="w-4 h-4 mr-2" />
+  
+  Admin Panel
+</DropdownMenuItem>
+<DropdownMenuSeparator />
+              <DropdownMenuItem 
+                className="text-red-600 dark:text-red-400 cursor-pointer hover:bg-red-50 dark:hover:bg-red-950/50"
+                onClick={handleLogout}
+                disabled={logoutLoading}
               >
-                <FileText className="w-4 h-4 mr-2" />
-                Markdown (.md)
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => handleExport('json')}
-                className="text-foreground cursor-pointer hover:bg-accent"
-              >
-                <FileText className="w-4 h-4 mr-2" />
-                JSON (.json)
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => handleExport('html')}
-                className="text-foreground cursor-pointer hover:bg-accent"
-              >
-                <FileText className="w-4 h-4 mr-2" />
-                HTML (.html)
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => handleExport('pdf')}
-                className="text-foreground cursor-pointer hover:bg-accent"
-              >
-                <FileText className="w-4 h-4 mr-2" />
-                PDF (.pdf)
+                {logoutLoading ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <LogOut className="w-4 h-4 mr-2" />
+                )}
+                Logout
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* More Options Dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground hover:text-foreground hover:bg-accent"
-              >
-                <MoreVertical className="w-4 h-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="bg-popover border-border min-w-[200px]">
-              <DropdownMenuGroup>
-                <DropdownMenuItem
-                  onClick={() => {
-                    setNewTitle(chat?.title || '')
-                    setRenameDialogOpen(true)
-                  }}
-                  className="text-foreground cursor-pointer hover:bg-accent"
-                >
-                  <Edit2 className="w-4 h-4 mr-2" />
-                  Rename Chat
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={handleToggleArchive}
-                  disabled={archiveLoading}
-                  className="text-foreground cursor-pointer hover:bg-accent"
-                >
-                  {archiveLoading ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Archive className="w-4 h-4 mr-2" />
-                  )}
-                  {chat?.is_archived ? 'Unarchive Chat' : 'Archive Chat'}
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => setDeleteDialogOpen(true)}
-                className="text-destructive cursor-pointer hover:bg-destructive/10"
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete Chat
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* Mobile Logout Button */}
+          <Button
+            onClick={handleLogout}
+            variant="ghost"
+            size="sm"
+            disabled={logoutLoading}
+            className="md:hidden text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/50"
+            title="Logout"
+          >
+            {logoutLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <LogOut className="w-4 h-4" />
+            )}
+          </Button>
+          
+          {/* Dark Mode Toggle */}
+          <Button 
+            onClick={toggleDarkMode}
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground hover:text-foreground hover:bg-accent"
+          >
+            {isDarkMode ? (
+              <Sun className="w-4 h-4" />
+            ) : (
+              <Moon className="w-4 h-4" />
+            )}
+          </Button>
         </div>
       </div>
 
@@ -617,7 +627,7 @@ export function TopBar({ onToggleSidebar, user, chatTitle, onChatUpdate }: TopBa
             placeholder="Enter new chat name"
             className="bg-background text-foreground border-input"
             autoFocus
-            onKeyPress={(e) => e.key === 'Enter' && handleRename()}
+            onKeyDown={(e) => e.key === 'Enter' && handleRename()}
           />
           <DialogFooter>
             <Button

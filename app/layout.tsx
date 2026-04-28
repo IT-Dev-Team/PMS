@@ -1,51 +1,32 @@
+// app/layout.tsx
 import type { Metadata } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
-import { Analytics } from '@vercel/analytics/next'
+import { Inter } from 'next/font/google'
 import './globals.css'
 
-const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
-const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono" });
+const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'EIH AI Assistant | Intelligent Chat & Document Analysis',
-  description: 'Ethiopian Investment Holding AI Chat platform powered by DeepSeek - Chat, upload documents, and leverage voice input for intelligent assistance.',
-  generator: 'v0.app',
+  title: 'EIH Chat - Ethiopian Investment Holding',
+  description: 'AI-powered document analysis and chat platform for Ethiopian Investment Holding',
+  keywords: 'Ethiopian Investment Holding, AI Chat, Document Analysis, Business License',
+  authors: [{ name: 'EIH Team' }],
+  viewport: 'width=device-width, initial-scale=1',
   icons: {
-    icon: [
-      {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
-      },
-      {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
-      },
-      {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
-      },
-    ],
-    apple: '/apple-icon.png',
-  },
-  viewport: {
-    width: 'device-width',
-    initialScale: 1,
-    maximumScale: 1,
-    userScalable: false,
-    themeColor: '#1d5a3d',
+    icon: '/eih.png',
+    shortcut: '/eih.png',
+    apple: '/eih.png',
   },
 }
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode
-}>) {
+}) {
   return (
-    <html lang="en" className="dark" style={{ colorScheme: 'dark' }}>
-      <body className={`${geist.variable} ${geistMono.variable} font-sans antialiased dark`}>
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${inter.className} bg-background text-foreground antialiased`}>
         {children}
-        <Analytics />
       </body>
     </html>
   )

@@ -1,38 +1,36 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
-import pool from '@/lib/db'
+// app/api/auth/logout/route.ts
+import { NextResponse } from 'next/server'
 
-export async function POST(request: NextRequest) {
-  let client;
-  
+export async function POST() {
   try {
-    const cookieStore = await cookies()
-    const sessionToken = cookieStore.get('session')?.value
+    const response = NextResponse.json({ 
+      success: true, 
+      message: 'Logged out successfully' 
+    })
     
-    if (sessionToken) {
-      client = await pool.connect()
-      
-      // Delete session from database
-      await client.query(
-        'DELETE FROM sessions WHERE token = $1',
-        [sessionToken]
-      )
-    }
+    // Clear all auth cookies
+    response.cookies.set('token', '', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 0,
+      path: '/',
+    })
     
-    // Clear cookies
-    cookieStore.delete('session')
-    cookieStore.delete('user')
+    response.cookies.set('oauth_state', '', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 0,
+      path: '/',
+    })
     
-    return NextResponse.json({ success: true })
+    return response
   } catch (error) {
     console.error('Logout error:', error)
     return NextResponse.json(
       { error: 'Failed to logout' },
       { status: 500 }
     )
-  } finally {
-    if (client) {
-      client.release()
-    }
   }
 }

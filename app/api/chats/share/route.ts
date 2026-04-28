@@ -147,8 +147,8 @@ export async function GET(request: NextRequest) {
     client = await pool.connect();
     
     const chatCheck = await client.query(
-      'SELECT id FROM chats WHERE id = $1 AND user_id = $2',
-      [chatId, userId]
+      'SELECT id FROM chats WHERE id = $1',
+      [chatId]
     )
 
     if (chatCheck.rows.length === 0) {

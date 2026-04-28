@@ -1,272 +1,243 @@
-// app/api/chats/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import jwt from 'jsonwebtoken'
 import pool from '@/lib/db'
+import { createTask, uploadFile } from '@/lib/manus-service'
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-minimum-32-characters'
 
-// GET /api/chats/:id - Get specific chat details
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  let client;
-  
-  try {
-    const cookieStore = await cookies()
-    const token = cookieStore.get('token')?.value
-    
-    if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    
-    let decoded
-    try {
-      decoded = jwt.verify(token, JWT_SECRET)
-    } catch (error) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
-    }
-    
-    const userId = decoded.userId
-    const chatId = params.id
-    
-    client = await pool.connect()
-    
-    const result = await client.query(
-      `SELECT 
-        id, 
-        title, 
-        summarized_title,
-        created_at, 
-        updated_at,
-        is_starred,
-        is_archived,
-        (SELECT COUNT(*) FROM messages WHERE chat_id = chats.id) as message_count
-       FROM chats
-       WHERE id = $1 AND user_id = $2`,
-      [chatId, userId]
-    )
-    
-    if (result.rows.length === 0) {
-      // Return empty chat object instead of 404 for new chats
-      return NextResponse.json({
-        id: chatId,
-        title: 'New Chat',
-        summarized_title: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        is_starred: false,
-        is_archived: false,
-        message_count: 0,
-        is_new: true // Flag to indicate this is a new/empty chat
-      })
-    }
-    
-    return NextResponse.json(result.rows[0])
-  } catch (error) {
-    console.error('Get chat error:', error)
-    return NextResponse.json({ error: 'Failed to fetch chat' }, { status: 500 })
-  } finally {
-    if (client) client.release()
+function generateTitleFromMessage(content: string): string {
+  const cleanContent = content.trim().replace(/\s+/g, ' ')
+  if (cleanContent.length <= 30) {
+    return cleanContent
   }
+  return cleanContent.substring(0, 30) + '...'
 }
 
-// PATCH /api/chats/:id - Update chat (rename, star, archive)
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { id: string } }
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  let client;
-  
+  let client
+
   try {
     const cookieStore = await cookies()
     const token = cookieStore.get('token')?.value
-    
+
     if (!token) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    
+
     let decoded
     try {
       decoded = jwt.verify(token, JWT_SECRET)
     } catch (error) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
     }
-    
-    const userId = decoded.userId
-    const chatId = params.id
-    const { title, is_starred, is_archived } = await req.json()
-    
+
+    const userId = decoded.userId || decoded.id
+    const { id: chatId } = await params
+    const body = await request.json()
+    const { content, fileIds = [], attachments = [] } = body
+
+    if (!content?.trim() && fileIds.length === 0 && attachments.length === 0) {
+      return NextResponse.json(
+        { error: 'Message content or attachments are required' },
+        { status: 400 }
+      )
+    }
+
     client = await pool.connect()
-    
-    // First verify ownership
-    const ownershipCheck = await client.query(
-      'SELECT id FROM chats WHERE id = $1 AND user_id = $2',
+
+    const chatResult = await client.query(
+      'SELECT id, title, created_at FROM chats WHERE id = $1 AND user_id = $2',
       [chatId, userId]
     )
+
+    if (chatResult.rows.length === 0) {
+      client.release()
+      return NextResponse.json({ error: 'Chat not found' }, { status: 404 })
+    }
+
+    const chat = chatResult.rows[0]
+    const isFirstMessage = chat.title === 'New Conversation'
+
+    const userMessageResult = await client.query(
+      `INSERT INTO messages (chat_id, role, content, attachments, created_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       RETURNING id, chat_id, role, content, created_at, attachments`,
+      [chatId, 'user', content || '[File attachment]', JSON.stringify(attachments)]
+    )
+
+    let updatedChat = chat
+    if (isFirstMessage && content) {
+      const newTitle = generateTitleFromMessage(content)
+      await client.query(
+        'UPDATE chats SET title = $1, updated_at = NOW() WHERE id = $2',
+        [newTitle, chatId]
+      )
+      updatedChat.title = newTitle
+    }
+
+    // FIX: Mark the placeholder with message_type = 'placeholder' so the
+    // client can skip it when loading DB messages. It exists only for DB
+    // tracking (manus_task_id linkage) — never shown in the UI.
+    const assistantMessageResult = await client.query(
+      `INSERT INTO messages (chat_id, role, content, status_type, message_type, created_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       RETURNING id, chat_id, role, content, status_type, message_type, created_at`,
+      [chatId, 'assistant', '🔄 Manus is working on your request...', 'running', 'placeholder']
+    )
+
+    let taskId: string | null = null
     
-    // If chat doesn't exist, create it first
-    if (ownershipCheck.rows.length === 0) {
-      console.log('Chat not found, creating new chat:', chatId)
+    try {
+      const fullPrompt = content || 'Please process the attached files'
+      const chatTitle = isFirstMessage && content ? generateTitleFromMessage(content) : chat.title
       
-      // Create new chat with default values
-      const newTitle = title || 'New Chat'
-      const insertResult = await client.query(
-        `INSERT INTO chats (id, user_id, title, summarized_title, created_at, updated_at, is_starred, is_archived)
-         VALUES ($1, $2, $3, $4, NOW(), NOW(), $5, $6)
-         RETURNING id, title, summarized_title, is_starred, is_archived, updated_at`,
-        [chatId, userId, newTitle, newTitle, is_starred || false, is_archived || false]
+      console.log('[API] Creating Manus task with:', {
+        contentLength: fullPrompt.length,
+        fileCount: fileIds.length,
+        title: chatTitle
+      })
+      
+      const manusResponse = await createTask({
+        content: fullPrompt,
+        fileIds: fileIds.length > 0 ? fileIds : undefined,
+        interactiveMode: true,
+        agentProfile: 'manus-1.6',
+        locale: 'en',
+        title: chatTitle,
+        shareVisibility: 'private',
+        hideInTaskList: false
+      })
+      
+      taskId = manusResponse.taskId
+      
+      if (!taskId) {
+        throw new Error('No task ID returned from Manus API')
+      }
+      
+      console.log(`[API] ✅ Created Manus task: ${taskId}`)
+      
+      await client.query(
+        `UPDATE messages 
+         SET manus_task_id = $1, updated_at = NOW()
+         WHERE id = $2`,
+        [taskId, assistantMessageResult.rows[0].id]
       )
       
-      return NextResponse.json(insertResult.rows[0])
-    }
-    
-    // Build dynamic update query for existing chat
-    const updates: string[] = []
-    const values: any[] = []
-    let paramIndex = 1
-    
-    if (title !== undefined) {
-      updates.push(`title = $${paramIndex++}`)
-      values.push(title)
+      await client.query(
+        'UPDATE chats SET updated_at = NOW(), is_processing = true WHERE id = $1',
+        [chatId]
+      )
       
-      // Generate summarized title if title is being updated
-      const summary = await generateChatSummary(chatId, title, client)
-      updates.push(`summarized_title = $${paramIndex++}`)
-      values.push(summary)
+      client.release()
+      
+      return NextResponse.json({
+        success: true,
+        taskId,
+        chat: updatedChat,
+        userMessage: userMessageResult.rows[0],
+        // Return the placeholder row so client has the manus_task_id,
+        // but the client will NOT render it (guarded by message_type check)
+        assistantMessage: {
+          ...assistantMessageResult.rows[0],
+          manus_task_id: taskId
+        }
+      }, { status: 201 })
+      
+    } catch (taskError) {
+      console.error('[API] ❌ Failed to create Manus task:', taskError)
+      
+      await client.query(
+        `UPDATE messages 
+         SET content = $1, status_type = 'failed', message_type = 'error_message', updated_at = NOW()
+         WHERE id = $2`,
+        [`❌ Error: Unable to process request. ${taskError instanceof Error ? taskError.message : 'Please try again.'}`, 
+         assistantMessageResult.rows[0].id]
+      )
+      
+      await client.query(
+        'UPDATE chats SET updated_at = NOW(), is_processing = false WHERE id = $1',
+        [chatId]
+      )
+      
+      client.release()
+      
+      return NextResponse.json({
+        success: false,
+        error: 'Failed to create Manus task',
+        chat: updatedChat,
+        userMessage: userMessageResult.rows[0],
+        assistantMessage: {
+          ...assistantMessageResult.rows[0],
+          content: `❌ Error: ${taskError instanceof Error ? taskError.message : 'Unknown error'}`,
+          message_type: 'error_message'
+        }
+      }, { status: 500 })
     }
     
-    if (typeof is_starred === 'boolean') {
-      updates.push(`is_starred = $${paramIndex++}`)
-      values.push(is_starred)
-    }
-    
-    if (typeof is_archived === 'boolean') {
-      updates.push(`is_archived = $${paramIndex++}`)
-      values.push(is_archived)
-    }
-    
-    updates.push(`updated_at = NOW()`)
-    
-    if (updates.length === 1) {
-      return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
-    }
-    
-    const query = `
-      UPDATE chats 
-      SET ${updates.join(', ')}
-      WHERE id = $${paramIndex} AND user_id = $${paramIndex + 1}
-      RETURNING id, title, summarized_title, is_starred, is_archived, updated_at
-    `
-    
-    values.push(chatId, userId)
-    
-    const result = await client.query(query, values)
-    
-    return NextResponse.json(result.rows[0])
   } catch (error) {
-    console.error('Update chat error:', error)
-    return NextResponse.json({ error: 'Failed to update chat' }, { status: 500 })
-  } finally {
+    console.error('Error creating message:', error)
     if (client) client.release()
+    return NextResponse.json({ error: 'Failed to create message' }, { status: 500 })
   }
 }
 
-// DELETE /api/chats/:id - Delete chat
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { id: string } }
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  let client;
-  
+  let client
+
   try {
     const cookieStore = await cookies()
     const token = cookieStore.get('token')?.value
-    
+
     if (!token) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    
+
     let decoded
     try {
       decoded = jwt.verify(token, JWT_SECRET)
     } catch (error) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
     }
-    
-    const userId = decoded.userId
-    const chatId = params.id
-    
-    client = await pool.connect()
-    
-    // Check if chat exists
-    const chatCheck = await client.query(
-      'SELECT id FROM chats WHERE id = $1 AND user_id = $2',
-      [chatId, userId]
-    )
-    
-    if (chatCheck.rows.length === 0) {
-      // Return success even if chat doesn't exist (idempotent)
-      return NextResponse.json({ 
-        success: true, 
-        id: chatId, 
-        message: 'Chat already deleted or does not exist' 
-      })
-    }
-    
-    // Delete messages first (due to foreign key constraint)
-    await client.query('DELETE FROM messages WHERE chat_id = $1', [chatId])
-    
-    // Delete chat
-    await client.query(
-      'DELETE FROM chats WHERE id = $1 AND user_id = $2',
-      [chatId, userId]
-    )
-    
-    return NextResponse.json({ success: true, id: chatId, message: 'Chat deleted successfully' })
-  } catch (error) {
-    console.error('Delete chat error:', error)
-    return NextResponse.json({ error: 'Failed to delete chat' }, { status: 500 })
-  } finally {
-    if (client) client.release()
-  }
-}
 
-// Helper function to generate chat summary
-async function generateChatSummary(chatId: string, currentTitle: string, client: any): Promise<string> {
-  try {
-    // Fetch first few messages to generate a meaningful summary
+    const userId = decoded.userId || decoded.id
+    const { id: chatId } = await params
+
+    client = await pool.connect()
+
+    const chatResult = await client.query(
+      'SELECT id, title FROM chats WHERE id = $1 AND user_id = $2',
+      [chatId, userId]
+    )
+
+    if (chatResult.rows.length === 0) {
+      client.release()
+      return NextResponse.json({ error: 'Chat not found' }, { status: 404 })
+    }
+
     const messagesResult = await client.query(
-      `SELECT content, role 
+      `SELECT id, chat_id, role, content, created_at, attachments, manus_task_id, status_type, message_type
        FROM messages 
-       WHERE chat_id = $1 
-       ORDER BY created_at ASC 
-       LIMIT 5`,
+       WHERE chat_id = $1
+       ORDER BY created_at ASC`,
       [chatId]
     )
-    
-    const messages = messagesResult.rows
-    
-    if (messages.length === 0) {
-      // If no messages, summarize the title
-      return currentTitle.length > 30 ? currentTitle.substring(0, 27) + '...' : currentTitle
-    }
-    
-    // Get first user message
-    const firstUserMessage = messages.find((m: any) => m.role === 'user')?.content || ''
-    
-    if (!firstUserMessage) {
-      return currentTitle.length > 30 ? currentTitle.substring(0, 27) + '...' : currentTitle
-    }
-    
-    // Generate a short summary (max 30 characters)
-    let summary = firstUserMessage.substring(0, 27)
-    if (firstUserMessage.length > 27) summary += '...'
-    
-    return summary
+
+    client.release()
+    return NextResponse.json({
+      chat: chatResult.rows[0],
+      messages: messagesResult.rows
+    })
+
   } catch (error) {
-    console.error('Error generating summary:', error)
-    return currentTitle.length > 30 ? currentTitle.substring(0, 27) + '...' : currentTitle
+    console.error('Error fetching messages:', error)
+    if (client) client.release()
+    return NextResponse.json({ error: 'Failed to fetch messages' }, { status: 500 })
   }
 }
