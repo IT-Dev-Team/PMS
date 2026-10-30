@@ -1,4 +1,4 @@
-// Portfolio tabs -> project table (phase, progress, financial + operational health) -> project detail.
+// Sector / cluster tabs -> project table (phase, progress, financial + operational health) -> project detail.
 // Every figure comes from the same endpoints and formulas as ProjectDetail (lib/projects/metrics.ts + computePlanModel).
 // Visibility: the CEO sees every project; a project manager sees only the projects they manage.
 "use client";
@@ -11,6 +11,7 @@ import {
   computePlanModel,
   getDelay,
   progressOf,
+  effectiveStatus,
   type PlanItem,
 } from "@/components/projects/ProjectPlan";
 import {
@@ -98,12 +99,29 @@ const barColor = (v: number) => (v >= 70 ? DOT.G : v >= 40 ? DOT.A : DOT.R);
 const burnColor = (burn: number, prog: number) =>
   burn > prog + 12 ? DOT.R : burn > prog + 5 ? DOT.A : DOT.G;
 
-const phaseOf = (status: any) => {
+const phaseOf = (status: any, planItems: PlanItem[] = [], byId = new Map<string, PlanItem>()) => {
+  const phases = planItems.filter((item) => item.isPhase);
+  if (phases.length) {
+    const normalized = phases.map((item) => ({
+      item,
+      name: item.name.toLowerCase(),
+      complete: effectiveStatus(item, byId) === "Completed",
+    }));
+    const firstOpen = normalized.findIndex((phase) => !phase.complete);
+    if (firstOpen >= 0) {
+      const name = normalized[firstOpen].name;
+      if (name.includes("init")) return 0;
+      if (name.includes("plan")) return 1;
+      if (name.includes("clos") || name.includes("handover")) return 3;
+      return 2;
+    }
+    return 3;
+  }
   const v = String(status || "").toUpperCase();
   if (v.startsWith("INIT")) return 0;
   if (v.startsWith("PLAN")) return 1;
   if (v.startsWith("CLOS") || v === "COMPLETED") return 3;
-  return 2; // EXECUTING, MONITORING and anything in delivery
+  return 2;
 };
 
 // ---------------------------------------------------------------------------
@@ -226,7 +244,7 @@ function model(p: any, pf: any, raw?: ProjectRaw | null) {
     health: worst(fin, op),
     finWhy,
     opWhy,
-    phase: phaseOf(p.status),
+    phase: phaseOf(p.status, planItems, byId),
   };
 }
 
@@ -840,14 +858,14 @@ export function CEOExecutiveDashboard({
         >
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#ad9d6f]">
-              Chief executive office · portfolio oversight
+              Chief executive office · sector / cluster oversight
             </p>
             <h1 className="mt-1 font-serif text-2xl tracking-tight text-eih-ink md:text-3xl">
-              Enterprise portfolio review
+              Enterprise sector / cluster review
             </h1>
             <p className="mt-1 max-w-2xl text-sm text-eih-muted">
               A consolidated view of delivery, financial exposure and emerging
-              attention items across the EIH portfolio.
+              attention items across the EIH sector and cluster portfolio.
             </p>
           </div>
           <div className="flex items-center gap-2 text-xs font-medium text-eih-muted">
@@ -858,7 +876,7 @@ export function CEOExecutiveDashboard({
 
         <section className={`grid grid-cols-2 gap-3 lg:grid-cols-4 ${fade}`}>
           <Kpi
-            label="Portfolios"
+label="Sectors / clusters"
             value={String(groups.length)}
             sub={`${everyone.length} projects`}
           />
@@ -941,7 +959,7 @@ export function CEOExecutiveDashboard({
               <>
                 <div
                   role="tablist"
-                  aria-label="Portfolios"
+                  aria-label="Sectors and clusters"
                   className="flex gap-1 overflow-x-auto rounded-2xl border border-eih-line/70 bg-card/95 p-1.5 shadow-[0_8px_24px_rgba(15,46,38,0.05)] dark:shadow-[0_8px_24px_rgba(0,0,0,0.20)]"
                 >
                   {groups.map((x) => {
@@ -1162,7 +1180,7 @@ export function CEOExecutiveDashboard({
           })()}
         {!groups.length && (
           <div className="rounded-xl border border-eih-line/70 bg-card p-12 text-center text-sm text-eih-muted">
-            No portfolios or projects match these filters, or none are assigned
+            No sectors, clusters, or projects match these filters, or none are assigned
             to you.
           </div>
         )}

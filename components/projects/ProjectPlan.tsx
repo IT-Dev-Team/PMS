@@ -304,15 +304,15 @@ function Shell({ title, subtitle, onClose, children, footer, wide }: { title: st
     return () => { document.removeEventListener('keydown', esc); document.body.style.overflow = '' }
   }, [onClose])
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-eih-green-dark/60 p-4 backdrop-blur-sm">
-      <div className={`flex max-h-[92vh] w-full flex-col overflow-hidden rounded-2xl border border-eih-line/70 bg-card shadow-2xl ${wide ? 'max-w-6xl' : 'max-w-lg'}`}>
+    <div role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }} className="fixed inset-0 z-[60] flex items-center justify-center bg-eih-green-dark/60 p-4 backdrop-blur-sm">
+      <div role="dialog" aria-modal="true" aria-labelledby="management-modal-title" className={`flex max-h-[92vh] w-full flex-col overflow-hidden rounded-2xl border border-eih-line/70 bg-card shadow-2xl ${wide ? 'max-w-6xl' : 'max-w-lg'}`}>
         <div className="h-1 w-full bg-gradient-to-r from-eih-green via-eih-gold to-eih-green" />
-        <div className="flex items-start justify-between gap-4 border-b border-eih-line/60 p-5">
-          <div><h2 className="font-serif text-lg text-eih-ink">{title}</h2>{subtitle && <p className="mt-0.5 text-xs text-eih-muted">{subtitle}</p>}</div>
-          <button onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 text-eih-ink/60 hover:bg-eih-cream"><X className="h-5 w-5" /></button>
+        <div className="flex items-start justify-between gap-4 border-b border-eih-line/60 bg-eih-cream-soft/60 p-5">
+          <div><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-eih-gold">Management workspace</p><h2 id="management-modal-title" className="mt-1 font-serif text-lg text-eih-ink">{title}</h2>{subtitle && <p className="mt-1 max-w-2xl text-xs leading-5 text-eih-muted">{subtitle}</p>}</div>
+          <button onClick={onClose} aria-label="Close management workspace" className="rounded-lg p-1.5 text-eih-ink/60 transition hover:bg-eih-cream hover:text-eih-ink"><X className="h-5 w-5" /></button>
         </div>
         <div className="flex-1 overflow-y-auto p-5">{children}</div>
-        {footer && <div className="flex items-center justify-end gap-2 border-t border-eih-line/60 bg-eih-cream-soft px-5 py-4">{footer}</div>}
+        {footer && <div className="flex flex-wrap items-center justify-end gap-2 border-t border-eih-line/60 bg-eih-cream-soft px-5 py-4">{footer}</div>}
       </div>
     </div>
   )
