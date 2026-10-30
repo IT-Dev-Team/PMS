@@ -1,12 +1,9 @@
 // lib/manus-service.ts
 import pool from '@/lib/db';
 
-// API URLs (will be set dynamically after getting key)
-let MANUS_API_URL = 'https://api.manus.ai/v2';
-let MANUS_API_KEY: string | null = null;
-let cachedApiKeyHash: string | null = null;
-let lastKeyCheck = 0;
-const KEY_CACHE_TTL = 60000; // Re-check database every 60 seconds
+// Manus credentials are supplied by the server environment. Never read or persist
+// the API key through application database records.
+const MANUS_API_URL = 'https://api.manus.ai/v2';
 
 // ---------------------------------------------------------------------------
 // Content classification
@@ -92,44 +89,13 @@ const FORMAT_INSTRUCTIONS: Record<DocumentFormat, string> = {
 };
 
 // ---------------------------------------------------------------------------
-// Database / key management (unchanged)
+// Environment key management
 // ---------------------------------------------------------------------------
 
 async function getManusApiKey(): Promise<string> {
-  const now = Date.now();
-
-  if (!MANUS_API_KEY || !cachedApiKeyHash || (now - lastKeyCheck) > KEY_CACHE_TTL) {
-    try {
-      const result = await pool.query(
-        'SELECT api_key_hash FROM admin_settings WHERE id = 1 LIMIT 1'
-      );
-
-      const storedHash = result.rows[0]?.api_key_hash;
-
-      if (!storedHash) {
-        throw new Error('Manus API key not configured. Please set it in admin settings.');
-      }
-
-      if (storedHash.match(/^\$2[aby]\$\d+\$.+$/)) {
-        throw new Error(
-          'API key is stored as bcrypt hash, which cannot be decrypted. ' +
-          'Please re-save the API key using reversible encryption.'
-        );
-      }
-
-      MANUS_API_KEY = storedHash;
-      cachedApiKeyHash = storedHash;
-      lastKeyCheck = now;
-
-      console.log('[Manus Service] API key loaded from database');
-    } catch (error) {
-      console.error('[Manus Service] Failed to load API key:', error);
-      throw error;
-    }
-  }
-
-  if (!MANUS_API_KEY) throw new Error('Manus API key not configured');
-  return MANUS_API_KEY;
+  const apiKey = process.env.MANUS_API_KEY?.trim();
+  if (!apiKey) throw new Error('MANUS_API_KEY is not configured in the server environment.');
+  return apiKey;
 }
 
 async function getApiUrl(): Promise<string> {
@@ -141,9 +107,6 @@ export async function getApiKey(): Promise<string> {
 }
 
 export async function refreshApiKey(): Promise<void> {
-  cachedApiKeyHash = null;
-  MANUS_API_KEY = null;
-  lastKeyCheck = 0;
   await getManusApiKey();
 }
 
