@@ -99,29 +99,23 @@ const barColor = (v: number) => (v >= 70 ? DOT.G : v >= 40 ? DOT.A : DOT.R);
 const burnColor = (burn: number, prog: number) =>
   burn > prog + 12 ? DOT.R : burn > prog + 5 ? DOT.A : DOT.G;
 
-const phaseOf = (status: any, planItems: PlanItem[] = [], byId = new Map<string, PlanItem>()) => {
+const phaseState = (planItems: PlanItem[] = [], byId = new Map<string, PlanItem>()) => {
   const phases = planItems.filter((item) => item.isPhase);
-  if (phases.length) {
-    const normalized = phases.map((item) => ({
-      item,
-      name: item.name.toLowerCase(),
-      complete: effectiveStatus(item, byId) === "Completed",
-    }));
-    const firstOpen = normalized.findIndex((phase) => !phase.complete);
-    if (firstOpen >= 0) {
-      const name = normalized[firstOpen].name;
-      if (name.includes("init")) return 0;
-      if (name.includes("plan")) return 1;
-      if (name.includes("clos") || name.includes("handover")) return 3;
-      return 2;
-    }
-    return 3;
-  }
-  const v = String(status || "").toUpperCase();
-  if (v.startsWith("INIT")) return 0;
-  if (v.startsWith("PLAN")) return 1;
-  if (v.startsWith("CLOS") || v === "COMPLETED") return 3;
-  return 2;
+  const completed = new Set<number>();
+  const indexFor = (name: string) => {
+    const value = name.toLowerCase();
+    if (value.includes("init")) return 0;
+    if (value.includes("plan")) return 1;
+    if (value.includes("clos") || value.includes("handover")) return 3;
+    return 2;
+  };
+  phases.forEach((item) => {
+    if (effectiveStatus(item, byId) === "Completed") completed.add(indexFor(item.name));
+  });
+  const active = phases.length
+    ? [0, 1, 2, 3].find((index) => !completed.has(index)) ?? 3
+    : 0;
+  return { active, completed };
 };
 
 // ---------------------------------------------------------------------------
@@ -244,7 +238,7 @@ function model(p: any, pf: any, raw?: ProjectRaw | null) {
     health: worst(fin, op),
     finWhy,
     opWhy,
-    phase: phaseOf(p.status, planItems, byId),
+    ...phaseState(planItems, byId),
   };
 }
 
@@ -332,14 +326,14 @@ const Empty = ({ children }: { children: React.ReactNode }) => (
   <p className="px-4 py-5 text-center text-sm text-eih-muted">{children}</p>
 );
 
-function PhaseMini({ idx }: { idx: number }) {
+function PhaseMini({ idx, completed }: { idx: number; completed: Set<number> }) {
   return (
     <div className="min-w-[110px]">
       <div className="flex gap-1">
         {PHASES.map((_, i) => (
           <span
             key={i}
-            className={`h-1.5 flex-1 rounded-full ${i < idx ? "bg-eih-green/45" : i === idx ? "bg-eih-green" : "bg-eih-line"}`}
+            className={`h-1.5 flex-1 rounded-full ${completed.has(i) ? "bg-eih-green" : i === idx ? "bg-eih-gold" : "bg-eih-line"}`}
           />
         ))}
       </div>
@@ -349,24 +343,24 @@ function PhaseMini({ idx }: { idx: number }) {
     </div>
   );
 }
-function PhaseSteps({ idx }: { idx: number }) {
+function PhaseSteps({ idx, completed }: { idx: number; completed: Set<number> }) {
   return (
     <ol className="flex items-center gap-2">
       {PHASES.map((ph, i) => (
         <li key={ph} className="flex flex-1 items-center gap-2">
           <span
-            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${i < idx ? "bg-eih-green/15 text-eih-ink" : i === idx ? "bg-eih-green text-eih-on-green ring-4 ring-eih-gold/25" : "bg-eih-cream text-eih-ink/40"}`}
+            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${completed.has(i) ? "bg-eih-green/15 text-eih-ink" : i === idx ? "bg-eih-gold text-eih-ink ring-4 ring-eih-gold/25" : "bg-eih-cream text-eih-ink/40"}`}
           >
-            {i < idx ? "✓" : i + 1}
+            {completed.has(i) ? "✓" : i + 1}
           </span>
           <span
-            className={`text-xs ${i === idx ? "font-semibold text-eih-ink" : "text-eih-muted"}`}
+            className={`text-xs ${completed.has(i) || i === idx ? "font-semibold text-eih-ink" : "text-eih-muted"}`}
           >
             {ph}
           </span>
           {i < PHASES.length - 1 && (
             <span
-              className={`h-0.5 flex-1 rounded-full ${i < idx ? "bg-eih-green/40" : "bg-eih-line"}`}
+              className={`h-0.5 flex-1 rounded-full ${completed.has(i) ? "bg-eih-green/40" : "bg-eih-line"}`}
             />
           )}
         </li>
@@ -506,7 +500,7 @@ function ProjectPanel({
       </div>
 
       <div className="rounded-xl border border-eih-line/70 bg-card p-4">
-        <PhaseSteps idx={p.phase} />
+        <PhaseSteps idx={p.active} completed={p.completed} />
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
@@ -1078,7 +1072,7 @@ label="Sectors / clusters"
                                 </span>
                               </td>
                               <td className="px-3.5 py-3">
-                                <PhaseMini idx={p.phase} />
+                                <PhaseMini idx={p.active} completed={p.completed} />
                               </td>
                               <td
                                 className={`min-w-[120px] px-3.5 py-3 ${dim}`}
