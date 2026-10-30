@@ -23,6 +23,7 @@ import { CreatePortfolioModal } from "@/components/portfolio/CreatePortfolioModa
 import { useNotifications } from "@/hooks/useNotifications";
 import { setNavTarget } from "@/hooks/useDashboardNav";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
+import { AIAdvisorModal } from "@/components/layout/AIAdvisorModal";
 
 interface DashboardHeaderProps {
   user: { id: string; name: string; email: string; role: string };
@@ -54,6 +55,7 @@ export function DashboardHeader({ user, onMenuToggle }: DashboardHeaderProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [showProjectModal, setShowProjectModal] = useState(false);
   const [showPortfolioModal, setShowPortfolioModal] = useState(false);
+  const [showAIAdvisor, setShowAIAdvisor] = useState(false);
 
   // Close dropdowns on click outside or Escape
   useEffect(() => {
@@ -249,9 +251,9 @@ export function DashboardHeader({ user, onMenuToggle }: DashboardHeaderProps) {
 
             {/* Right Actions */}
             <div ref={wrapRef} className="ml-auto flex items-center gap-1.5">
-              <button className="hidden items-center gap-2 rounded-lg border border-eih-gold/40 bg-eih-gold/10 px-3 py-1.5 text-xs font-semibold text-eih-gold-light transition hover:bg-eih-gold/20 md:flex">
-                <Sparkles className="h-3.5 w-3.5" /> AI Advisor
-              </button>
+  <button type="button" onClick={() => setShowAIAdvisor(true)} aria-label="Open AI Advisor" className="hidden items-center gap-2 rounded-lg border border-eih-gold/40 bg-eih-gold/10 px-3 py-1.5 text-xs font-semibold text-eih-gold-light transition hover:bg-eih-gold/20 md:flex">
+<Sparkles className="h-3.5 w-3.5" /> AI Advisor
+  </button>
 
               <ThemeToggle variant="header" />
 
@@ -514,6 +516,7 @@ export function DashboardHeader({ user, onMenuToggle }: DashboardHeaderProps) {
         onClose={() => setShowPortfolioModal(false)}
         userId={user.id}
       />
+      <AIAdvisorModal isOpen={showAIAdvisor} onClose={() => setShowAIAdvisor(false)} />
     </>
   );
 }

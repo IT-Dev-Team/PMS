@@ -171,6 +171,7 @@ export function AIAdvisorModal({ isOpen, onClose }: AIAdvisorModalProps) {
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [portfolios, setPortfolios] = useState<ProjectRecord[]>([]);
   const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<AdvisorMessage[]>([initialMessage]);
@@ -245,19 +246,40 @@ export function AIAdvisorModal({ isOpen, onClose }: AIAdvisorModalProps) {
     return { budget, progress };
   }, [projects]);
 
-  const askQuestion = (value = question) => {
+  const askQuestion = async (value = question) => {
     const trimmed = value.trim();
-    if (!trimmed || loading) return;
-    setMessages((current) => [
-      ...current,
-      { id: `user-${Date.now()}`, role: "user", text: trimmed },
-      {
-        id: `assistant-${Date.now()}`,
-        role: "assistant",
-        text: answerFromContext(trimmed, projects),
-      },
-    ]);
+    if (!trimmed || sending || loading) return;
+    setMessages((current) => [...current, { id: `user-${Date.now()}`, role: "user", text: trimmed }]);
     setQuestion("");
+    setSending(true);
+    setError(null);
+    try {
+      const createResponse = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: trimmed }),
+      });
+      const created = await createResponse.json();
+      if (!createResponse.ok || !created.taskId) throw new Error(created.error || "Could not start Manus AI.");
+
+      const deadline = Date.now() + 120000;
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => window.setTimeout(resolve, 2000));
+        const response = await fetch(`/api/chat?taskId=${encodeURIComponent(created.taskId)}&t=${Date.now()}`, { cache: "no-store" });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Could not read Manus AI response.");
+        if (result.status === "done") {
+          setMessages((current) => [...current, { id: `assistant-${Date.now()}`, role: "assistant", text: result.reply }]);
+          return;
+        }
+        if (result.status === "error") throw new Error(result.error || "Manus AI could not complete the request.");
+      }
+      throw new Error("Manus AI is taking longer than expected. Please try again shortly.");
+    } catch (requestError) {
+      setMessages((current) => [...current, { id: `assistant-${Date.now()}`, role: "assistant", text: requestError instanceof Error ? requestError.message : "Could not reach Manus AI.", }]);
+    } finally {
+      setSending(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -329,10 +351,10 @@ export function AIAdvisorModal({ isOpen, onClose }: AIAdvisorModalProps) {
                   </div>
                 </div>
               ))}
-              {loading && (
+              {(loading || sending) && (
                 <div className="flex items-center gap-2 text-xs text-eih-muted">
                   <Loader2 className="h-4 w-4 animate-spin text-eih-gold" />{" "}
-                  Loading the latest project office data…
+                  {sending ? "Manus AI is preparing an answer…" : "Loading the latest project office data…"}
                 </div>
               )}
               {error && (
@@ -353,7 +375,7 @@ export function AIAdvisorModal({ isOpen, onClose }: AIAdvisorModalProps) {
                   <button
                     key={prompt}
                     type="button"
-                    onClick={() => askQuestion(prompt)}
+                    onClick={() => void askQuestion(prompt)}
                     className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold text-eih-muted transition hover:border-eih-gold/60 hover:text-eih-ink"
                   >
                     {prompt}
@@ -378,7 +400,7 @@ export function AIAdvisorModal({ isOpen, onClose }: AIAdvisorModalProps) {
                 />
                 <button
                   type="submit"
-                  disabled={!question.trim() || loading}
+                  disabled={!question.trim() || loading || sending}
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-eih-green text-white transition hover:bg-eih-green-light disabled:cursor-not-allowed disabled:opacity-40"
                   aria-label="Send question"
                 >
