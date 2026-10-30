@@ -1,6 +1,4 @@
 // lib/manus-service.ts
-import pool from '@/lib/db';
-
 // Manus credentials are supplied by the server environment. Never read or persist
 // the API key through application database records.
 const MANUS_API_URL = 'https://api.manus.ai/v2';
@@ -365,10 +363,6 @@ export async function createTask(options: {
   if (options.connectors?.length)   messageObj.connectors     = options.connectors;
   if (options.enableSkills?.length) messageObj.enable_skills  = options.enableSkills;
   if (options.forceSkills?.length)  messageObj.force_skills   = options.forceSkills;
-   const result = await pool.query(
-        'SELECT manus_project_id FROM admin_settings WHERE id = 1 LIMIT 1'
-      );
-const projectId = result.rows.length>0 ? result.rows[0]?.manus_project_id : null;
   const requestBody: any = {
     message: messageObj,
     interactive_mode:  options.interactiveMode  ?? true,
@@ -376,9 +370,7 @@ const projectId = result.rows.length>0 ? result.rows[0]?.manus_project_id : null
     locale:            options.locale           ?? 'en',
     share_visibility:  options.shareVisibility  ?? 'private',
     hide_in_task_list: options.hideInTaskList   ?? false,
-    project_id:        projectId   ?? null,
   };
-console.log(`[Manus] Using project ID for new task: ${projectId}`);
   if (options.title) requestBody.title = options.title;
 
   if (options.enableSkills?.length || options.forceSkills?.length) {
