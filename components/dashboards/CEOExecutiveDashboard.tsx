@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import Link from "next/link";
-import { Search, X, ArrowUpRight, Loader2 } from "lucide-react";
+import { Search, X, ArrowUpRight, Loader2, Info } from "lucide-react";
 import {
   computePlanModel,
   getDelay,
@@ -734,6 +734,7 @@ export function CEOExecutiveDashboard({
   const [selected, setSelected] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [attentionOnly, setAttentionOnly] = useState(false);
+  const [briefingOpen, setBriefingOpen] = useState(false);
 
   // Each project's figures come from the same endpoints ProjectDetail uses
   const ids = useMemo(
@@ -851,6 +852,9 @@ export function CEOExecutiveDashboard({
             </p>
           </div>
           <div className="flex items-center gap-2 text-xs font-medium text-eih-muted">
+            <button type="button" onClick={() => setBriefingOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-eih-line bg-card px-3 py-2 text-eih-ink transition hover:border-eih-gold hover:bg-eih-cream-soft" aria-label="Open CEO KPI briefing">
+              <Info data-icon="inline-start" /> CEO briefing
+            </button>
             <span className="h-2 w-2 rounded-full bg-eih-success shadow-[0_0_0_4px_rgba(31,138,76,0.14)]" />
             Live portfolio view
           </div>
@@ -1167,6 +1171,33 @@ label="Sectors / clusters"
           </div>
         )}
       </div>
+      {briefingOpen && <CeoBriefingModal onClose={() => setBriefingOpen(false)} />}
+    </div>
+  );
+}
+
+function CeoBriefingModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }} className="fixed inset-0 z-50 flex items-center justify-center bg-eih-green-dark/55 p-4 backdrop-blur-sm">
+      <section role="dialog" aria-modal="true" aria-labelledby="ceo-briefing-title" className="max-h-[88vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-eih-line bg-card shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-eih-line/70 bg-eih-cream-soft/60 p-5">
+          <div><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-eih-gold">Decision support</p><h2 id="ceo-briefing-title" className="mt-1 font-serif text-xl text-eih-ink">CEO KPI briefing</h2><p className="mt-1 text-sm text-eih-muted">Use these indicators to understand whether delivery is creating value, consuming too much cost, or falling behind schedule.</p></div>
+          <button type="button" onClick={onClose} aria-label="Close CEO KPI briefing" className="rounded-lg p-2 text-eih-muted transition hover:bg-eih-cream hover:text-eih-ink"><X /></button>
+        </div>
+        <div className="grid gap-3 p-5 sm:grid-cols-2">
+          {[
+            ["Cost Variance (CV)", "EV − AC", "Positive means the work delivered is worth more than the cost incurred; negative means over budget."],
+            ["Schedule Variance (SV)", "EV − PV", "Positive means ahead of the plan; negative means behind schedule."],
+            ["Cost Performance Index (CPI)", "EV ÷ AC", "> 1.00 is efficient; 0.95–0.99 is an early warning; < 0.95 needs attention."],
+            ["Schedule Performance Index (SPI)", "EV ÷ PV", "> 1.00 is ahead; 0.95–0.99 is an early warning; < 0.95 is behind plan."],
+            ["Estimate at Completion (EAC)", "BAC ÷ CPI", "Expected final cost when current cost efficiency continues."],
+            ["Estimate to Complete (ETC)", "EAC − AC", "Remaining forecast cost required to finish the work."],
+            ["Variance at Completion (VAC)", "BAC − EAC", "Positive means expected under budget; negative means an expected overrun."],
+            ["To-Complete Performance Index (TCPI)", "(BAC − EV) ÷ (BAC − AC)", "The future cost efficiency required to meet the approved budget."],
+          ].map(([label, formula, guidance]) => <article key={label} className="rounded-xl border border-eih-line/70 bg-background p-4"><h3 className="text-sm font-semibold text-eih-ink">{label}</h3><p className="mt-2 inline-flex rounded-md bg-eih-cream px-2 py-1 font-mono text-xs text-eih-green-dark">{formula}</p><p className="mt-2 text-xs leading-5 text-eih-muted">{guidance}</p></article>)}
+        </div>
+        <div className="border-t border-eih-line/70 bg-eih-cream-soft/40 px-5 py-4 text-xs leading-5 text-eih-muted"><b className="text-eih-ink">Reading the dashboard:</b> CPI and SPI are efficiency ratios. Pair them with CV and SV to understand the size and direction of the issue, then use the project detail view to inspect the phase, task, and cost records behind the result.</div>
+      </section>
     </div>
   );
 }
