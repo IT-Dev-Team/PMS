@@ -6,6 +6,22 @@ export interface Message {
   attachments?: Attachment[];
 }
 
+export interface NotificationItem {
+  id: string;
+  type: 'REPORT_SUBMITTED_TO_CEO' | 'ISSUE_CEO_ATTENTION' | 'GENERAL';
+  title: string;
+  message: string;
+  projectId: string;
+  projectName: string;
+  targetType: 'report' | 'issue';
+  targetId: string;
+  createdAt: string;
+  read: boolean;
+  reviewed: boolean;
+  submittedBy: string;
+  severity?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+}
+
 export interface Attachment {
   id: string;
   name: string;

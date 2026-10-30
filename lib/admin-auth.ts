@@ -1,32 +1,147 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
+import jwt from 'jsonwebtoken';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
 /**
- * Verify admin authentication token
- * This should be connected to your existing auth system
+ * Get auth token from request cookies
  */
-export function verifyAdminAuth(req: NextRequest): boolean {
-  const authHeader = req.headers.get('Authorization');
-  
-  if (!authHeader?.startsWith('Bearer ')) {
-    return false;
+export async function getAuthToken(request: NextRequest): Promise<string | null> {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('token')?.value;
+    
+    if (!token) {
+      return null;
+    }
+    
+    return token;
+  } catch (error) {
+    console.error('Error getting auth token:', error);
+    return null;
   }
-
-  const token = authHeader.substring(7);
-  
-  // TODO: Validate token against your auth system
-  // For now, this is a placeholder
-  return !!token;
 }
 
 /**
- * Get auth token from request
+ * Verify JWT token and return decoded payload
  */
-export function getAuthToken(req: NextRequest): string | null {
-  const authHeader = req.headers.get('Authorization');
-  
-  if (!authHeader?.startsWith('Bearer ')) {
+export async function verifyToken(request: NextRequest): Promise<any | null> {
+  try {
+    const token = await getAuthToken(request);
+    
+    if (!token) {
+      return null;
+    }
+    
+    const decoded = jwt.verify(token, JWT_SECRET);
+    return decoded;
+  } catch (error) {
+    console.error('Error verifying token:', error);
     return null;
   }
+}
 
-  return authHeader.substring(7);
+/**
+ * Verify admin authentication token
+ * This checks if the user is authenticated and has admin privileges
+ */
+export async function verifyAdmin(request: NextRequest): Promise<boolean> {
+  try {
+    const decoded = await verifyToken(request);
+    
+    if (!decoded) {
+      return false;
+    }
+    
+    // Check if user has admin privileges
+    // Assuming the token contains an isAdmin field or role field
+    if (decoded.isAdmin === true || decoded.role === 'admin') {
+      return true;
+    }
+    
+    return false;
+  } catch (error) {
+    console.error('Error verifying admin:', error);
+    return false;
+  }
+}
+
+/**
+ * Verify regular user authentication (non-admin)
+ */
+export async function verifyAuth(request: NextRequest): Promise<boolean> {
+  try {
+    const decoded = await verifyToken(request);
+    
+    if (!decoded) {
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error verifying auth:', error);
+    return false;
+  }
+}
+
+/**
+ * Get current user from token
+ */
+export async function getCurrentUser(request: NextRequest): Promise<any | null> {
+  try {
+    const decoded = await verifyToken(request);
+    return decoded;
+  } catch (error) {
+    console.error('Error getting current user:', error);
+    return null;
+  }
+}
+
+/**
+ * Get user ID from token
+ */
+export async function getUserId(request: NextRequest): Promise<string | null> {
+  try {
+    const decoded = await verifyToken(request);
+    return decoded?.userId || decoded?.id || null;
+  } catch (error) {
+    console.error('Error getting user ID:', error);
+    return null;
+  }
+}
+
+/**
+ * Create auth response with token
+ */
+export function createAuthResponse(data: any, token: string): NextResponse {
+  const response = NextResponse.json({
+    success: true,
+    data,
+  });
+  
+  // Set cookie with token
+  response.cookies.set('token', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: 7 * 24 * 60 * 60, // 7 days
+    path: '/',
+  });
+  
+  return response;
+}
+
+/**
+ * Clear auth cookie (logout)
+ */
+export function clearAuthResponse(): NextResponse {
+  const response = NextResponse.json({
+    success: true,
+    message: 'Logged out successfully',
+  });
+  
+  response.cookies.delete('token');
+  
+  return response;
 }

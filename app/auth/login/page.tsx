@@ -1,7 +1,7 @@
 // app/auth/login/page.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { 
@@ -20,9 +20,11 @@ import {
   AlertCircle
 } from 'lucide-react'
 
-export default function LoginPage() {
+// Component that uses useSearchParams
+function LoginContent() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -33,7 +35,10 @@ export default function LoginPage() {
   const [popupWindow, setPopupWindow] = useState<Window | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
-  const redirect = searchParams.get('redirect') || '/chat'
+  const redirect = searchParams.get('redirect') || '/dashboard'
+
+  // Check if we're in a popup window
+  const isPopup = typeof window !== 'undefined' && window.opener && window.opener !== window
 
   // Check for saved email
   useEffect(() => {
@@ -44,7 +49,28 @@ export default function LoginPage() {
     }
   }, [])
 
-  // Handle OAuth callback message
+  // Check existing session - but only if not in popup
+  useEffect(() => {
+    const checkExistingSession = async () => {
+      // Don't auto-redirect if we're in a popup
+      if (isPopup) {
+        setIsCheckingAuth(false)
+        return
+      }
+      
+      try {
+       
+      } catch (error) {
+        console.error('Auth check error:', error)
+      } finally {
+        setIsCheckingAuth(false)
+      }
+    }
+    
+    checkExistingSession()
+  }, [router, isPopup])
+
+  // Handle OAuth callback message (same as before)
   useEffect(() => {
     const handleOAuthMessage = async (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return
@@ -67,7 +93,11 @@ export default function LoginPage() {
               headers: {
                 'Content-Type': 'application/json',
               },
-              body: JSON.stringify({ code, state }),
+              body: JSON.stringify({ 
+                code, 
+                state,
+                code_verifier: localStorage.getItem('pkce_code_verifier')
+              }),
             })
             
             const data = await response.json()
@@ -80,7 +110,11 @@ export default function LoginPage() {
               popupWindow.close()
             }
             
-            router.push('/chat')
+            // Clear OAuth state
+            localStorage.removeItem('oauth_state')
+            localStorage.removeItem('pkce_code_verifier')
+            
+            router.push('/dashboard')
             router.refresh()
           } catch (err) {
             const message = err instanceof Error ? err.message : 'Authentication failed'
@@ -95,6 +129,48 @@ export default function LoginPage() {
     return () => window.removeEventListener('message', handleOAuthMessage)
   }, [popupWindow, router])
 
+  // Logout function to clear session
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' })
+      localStorage.removeItem('remembered_email')
+      localStorage.removeItem('oauth_state')
+      localStorage.removeItem('pkce_code_verifier')
+      
+      // Clear all cookies
+      document.cookie.split(";").forEach((c) => {
+        document.cookie = c
+          .replace(/^ +/, "")
+          .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+      })
+      
+      // Refresh to clear state
+      window.location.reload()
+    } catch (error) {
+      console.error('Logout error:', error)
+    }
+  }
+
+  // Show loading state while checking auth
+  if (isCheckingAuth && !isPopup) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 flex items-center justify-center p-4">
+        <div className="w-full max-w-md mx-auto">
+          <div className="bg-card rounded-2xl shadow-2xl p-8 border border-border text-center">
+            <div className="inline-flex items-center justify-center mb-4">
+              <img src="/eih.png" alt="Logo" className="w-20 h-20 object-contain animate-pulse" />
+            </div>
+            <div className="relative w-12 h-12 mx-auto">
+              <div className="absolute inset-0 rounded-full border-4 border-primary/20"></div>
+              <div className="absolute inset-0 rounded-full border-4 border-primary border-t-transparent animate-spin"></div>
+            </div>
+            <p className="text-muted-foreground mt-4">Checking session...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!email) return 'Email is required'
@@ -108,63 +184,22 @@ export default function LoginPage() {
     return ''
   }
 
-  const handleMicrosoftLogin = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-
-      const state = generateRandomString(32)
-      localStorage.setItem('oauth_state', state)
-
-      const clientId = process.env.NEXT_PUBLIC_MICROSOFT_CLIENT_ID
-      const redirectUri = `${window.location.origin}/api/auth/callback`
-      const scope = 'openid profile email User.Read'
-
-      if (!clientId) {
-        throw new Error('Microsoft OAuth client ID not configured')
-      }
-
-      const authUrl = new URL(`https://login.microsoftonline.com/${process.env.NEXT_PUBLIC_MICROSOFT_TENANT_ID || "common"}/oauth2/v2.0/authorize`)
-      authUrl.searchParams.append('client_id', clientId)
-      authUrl.searchParams.append('response_type', 'code')
-      authUrl.searchParams.append('redirect_uri', redirectUri)
-      authUrl.searchParams.append('scope', scope)
-      authUrl.searchParams.append('state', state)
-
-      // Open popup
-      const width = 600
-      const height = 700
-      const left = window.screenX + (window.outerWidth - width) / 2
-      const top = window.screenY + (window.outerHeight - height) / 2
-      
-      const popup = window.open(
-        authUrl.toString(),
-        'microsoft-login',
-        `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=yes,resizable=yes`
-      )
-      
-      if (!popup) {
-        throw new Error('Popup blocked. Please allow popups for this site.')
-      }
-      
-      setPopupWindow(popup)
-      
-      const popupInterval = setInterval(() => {
-        if (popup.closed) {
-          clearInterval(popupInterval)
-          setLoading(false)
-          setPopupWindow(null)
-        }
-      }, 500)
-      
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'An error occurred'
-      setError(message)
-      console.error('Login error:', err)
-      setLoading(false)
-    }
+const handleMicrosoftLogin = async () => {
+  try {
+    setLoading(true)
+    setError(null)
+    
+    // Use the initiation route which sets cookies properly
+    const redirectPath = redirect || '/dashboard'
+    window.location.href = `/api/auth/microsoft?redirect=${encodeURIComponent(redirectPath)}`
+    
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'An error occurred'
+    setError(message)
+    console.error('Login error:', err)
+    setLoading(false)
   }
-
+}
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -226,11 +261,11 @@ export default function LoginPage() {
           {/* Logo/Title */}
           <div className="text-center mb-8">
             <div className="inline-flex items-center ">
-              <img src="/eih.png" alt="Logo" className="w-20 h-20 object-contain" />
+              <img src="/eih.png" alt="Logo" className="w-30 h-30 object-contain" />
             </div>
             <h2 className="text-2xl font-bold text-foreground">Sign In</h2>
             <p className="text-muted-foreground text-sm mt-1">
-              Access your AI assistant dashboard
+              Access your PMS dashboard.
             </p>
           </div>
 
@@ -247,19 +282,29 @@ export default function LoginPage() {
           {/* Login Options */}
           <div className="space-y-3 mb-6">
             {/* Microsoft Login Button */}
-            <button
-              onClick={handleMicrosoftLogin}
-              disabled={loading}
-              className="w-full flex items-center justify-center gap-3 bg-[#2E2E2E] hover:bg-[#3E3E3E] text-white font-semibold py-3 px-4 rounded-xl transition-all duration-200 disabled:opacity-50 group"
-            >
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M11.4 24H0V12.6h11.4V24zM24 24H12.6V12.6H24V24zM11.4 11.4H0V0h11.4v11.4zm12.6 0H12.6V0H24v11.4z" />
-              </svg>
-              {loading ? 'Signing in...' : 'Continue with Microsoft'}
-            </button>
+            {/* Microsoft Login Button */}
+<button
+  onClick={handleMicrosoftLogin}
+  disabled={loading}
+  className="w-full flex items-center justify-center gap-3 bg-[#2E2E2E] hover:bg-[#3E3E3E] text-white font-semibold py-3 px-4 rounded-xl transition-all duration-200 disabled:opacity-50 group"
+>
+  {loading ? (
+    <>
+      <Loader2 className="w-5 h-5 animate-spin" />
+      <span>Logging in...</span>
+    </>
+  ) : (
+    <>
+      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M11.4 24H0V12.6h11.4V24zM24 24H12.6V12.6H24V24zM11.4 11.4H0V0h11.4v11.4zm12.6 0H12.6V0H24v11.4z" />
+      </svg>
+      <span>Continue with Microsoft</span>
+    </>
+  )}
+</button>
 
             {/* Divider */}
-            <div className="relative">
+            {/* <div className="relative">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-border"></div>
               </div>
@@ -268,7 +313,7 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Email Login Toggle */}
+            Email Login Toggle 
             {!showPasswordLogin ? (
               <button
                 onClick={() => setShowPasswordLogin(true)}
@@ -379,10 +424,34 @@ export default function LoginPage() {
                   ← Back to all sign in options
                 </button>
               </form>
-            )}
+            )}*/}
           </div>
         </div>
       </div>
     </div>
+  )
+}
+
+// Main page component with Suspense boundary
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 flex items-center justify-center p-4">
+        <div className="w-full max-w-md mx-auto">
+          <div className="bg-card rounded-2xl shadow-2xl p-8 border border-border text-center">
+            <div className="inline-flex items-center justify-center mb-4">
+              <img src="/eih.png" alt="Logo" className="w-20 h-20 object-contain animate-pulse" />
+            </div>
+            <div className="relative w-12 h-12 mx-auto">
+              <div className="absolute inset-0 rounded-full border-4 border-primary/20"></div>
+              <div className="absolute inset-0 rounded-full border-4 border-primary border-t-transparent animate-spin"></div>
+            </div>
+            <p className="text-muted-foreground mt-4">Loading login page...</p>
+          </div>
+        </div>
+      </div>
+    }>
+      <LoginContent />
+    </Suspense>
   )
 }

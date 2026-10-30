@@ -1,40 +1,40 @@
-import { NextApiRequest } from 'next'
-import pool from './db'
+import { betterAuth } from 'better-auth'
+import  pool  from '@/lib/db'
 
-export async function getCurrentUser(req: NextApiRequest) {
-  let client;
-
-  try {
-    const sessionToken = req.cookies.session;
-
-    if (!sessionToken) {
-      return null;
-    }
-
-    client = await pool.connect();
-
-    const result = await client.query(
-      `SELECT u.id, u.email, u.name, u.avatar_url
-       FROM sessions s
-       JOIN users u ON s.user_id = u.id
-       WHERE s.token = $1 AND s.expires_at > NOW()`,
-      [sessionToken]
-    );
-
-    if (result.rows.length === 0) {
-      return null;
-    }
-
-    await client.query(
-      `UPDATE sessions SET last_activity_at = NOW() WHERE token = $1`,
-      [sessionToken]
-    );
-
-    return result.rows[0];
-  } catch (error) {
-    console.error('Get current user error:', error);
-    return null;
-  } finally {
-    if (client) client.release();
-  }
-}
+export const auth = betterAuth({
+  database: pool,
+  baseURL:
+    process.env.BETTER_AUTH_URL ??
+    (process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : process.env.V0_RUNTIME_URL),
+  emailAndPassword: {
+    enabled: true,
+    autoSignIn: true,
+  },
+  trustedOrigins: [
+    ...(process.env.V0_RUNTIME_URL ? [process.env.V0_RUNTIME_URL] : []),
+    ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
+    ...(process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? [`https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`]
+      : []),
+  ],
+  session: {
+    expiresIn: 60 * 60 * 24 * 7, // 7 days
+    updateAge: 60 * 60 * 24, // 1 day
+  },
+  ...(process.env.NODE_ENV === 'development'
+    ? {
+        advanced: {
+          // In dev (v0 preview iframe), force cross-site cookies so the
+          // session cookie is stored by the browser.
+          defaultCookieAttributes: {
+            sameSite: 'none' as const,
+            secure: true,
+          },
+        },
+      }
+    : {}),
+})

@@ -14,8 +14,8 @@ const config = {
   ],
 
   pages: {
-    signIn: '/login',
-    error: '/login',
+    signIn: '/auth/login',
+    error: '/atuh/login',
   },
 
   callbacks: {
