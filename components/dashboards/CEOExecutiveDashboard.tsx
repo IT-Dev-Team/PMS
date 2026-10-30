@@ -145,8 +145,8 @@ function model(p: any, pf: any, raw?: ProjectRaw | null) {
     pm
       ? {
           bac: pm.totalBudget || null,
-          progress: pm.progress,
-          planned: pm.planned,
+          pv: pm.pv,
+          ev: pm.ev,
           actual: pm.costsTotal,
         }
       : null,
@@ -526,18 +526,6 @@ function ProjectPanel({
           label="Budget"
           value={money(p.budget)}
           sub={`${money(p.ac)} spent (${Math.round(p.burn)}%)`}
-        />
-        <Kpi
-          label="Forecast"
-          value={money(p.eacN)}
-          sub={
-            p.vacN == null
-              ? undefined
-              : p.vacN < 0
-                ? `${money(-p.vacN)} over budget`
-                : "within budget"
-          }
-          tone={p.vacN == null ? "" : p.vacN < 0 ? TONE.red : TONE.green}
         />
         <Kpi
           label="Cost index (CPI)"

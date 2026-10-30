@@ -131,6 +131,7 @@ export function ProjectDetail({
   const [reportOpen, setReportOpen] = useState(false)
   const [editingReport, setEditingReport] = useState<PlanningReport | null>(null)
   const [packageModalOpen, setPackageModalOpen] = useState(false)
+  const [editingPackage, setEditingPackage] = useState<ProcurementPackage | null>(null)
   const [vendorModalOpen, setVendorModalOpen] = useState(false)
   const [reviewReportEntry, setReviewReportEntry] = useState<PlanningReport | null>(null)
   const [viewingReport, setViewingReport] = useState<PlanningReport | null>(null)
@@ -165,7 +166,7 @@ export function ProjectDetail({
   const evm = useMemo(() => {
     const source = financials || financialData?.projectFinancials?.find((i: any) => String(i.id) === String(project.id)) || {}
     return computeEvm(source, project, {
-      bac: plan.totalBudget || null, progress: plan.progress, planned: plan.planned,
+      bac: plan.totalBudget || null, pv: plan.pv, ev: plan.ev,
       actual: plan.costsTotal,
     })
   }, [financials, financialData, project, plan.totalBudget, plan.progress, plan.planned, plan.costsTotal, plan.pv, plan.pvToDate, plan.ev])
@@ -174,7 +175,7 @@ export function ProjectDetail({
   const zeroWhy = useMemo(() => {
     const d = plan.diag, w: string[] = []
     if (!d.items) { w.push('There are no plan items yet. Add phases and tasks in the Plan tab: planned value, earned value and progress are all calculated from them.'); return w }
-    if (!(plan.totalBudget > 0)) w.push('No phase or task has a budget. Planned value shows the project budget, and earned value is that budget × the completed percentage. Add budgets in the Plan tab for exact figures.')
+    if (!(plan.totalBudget > 0)) w.push('No plan item has a budget. Planned value and earned value are calculated directly from plan item budgets, so add budgets in the Plan tab for exact figures.')
     if (plan.progress === 0) w.push(`Progress and earned value are 0 because no plan item is marked Completed yet (${d.completedLeaves} of ${d.leaves} tasks). Mark tasks Completed in the Plan tab.`)
     if (!costsForCashFlow.length) w.push('No costs are logged yet, so actual cost is $0 and the forecast equals the budget.')
     return w
@@ -454,8 +455,7 @@ export function ProjectDetail({
                 </div>
               )}
               <p className="-mt-3 text-xs text-eih-muted">
-                Planned value = the plan&apos;s total budget. Earned value = the budget of the plan items marked Completed. Actual cost = costs logged on this
-                project (pending and approved, rejected excluded, in USD). Forecast = budget ÷ CPI.
+  Planned value = the sum of all plan item budgets. Earned value = the sum of budgets for completed plan items. Actual cost = the sum of all logged costs in USD.
               </p>
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="rounded-xl border border-eih-line/70 bg-card p-5">
@@ -492,7 +492,7 @@ export function ProjectDetail({
                 </div>
                 {canManage && (
                   <div className="flex flex-wrap gap-2">
-                    <ActionButton primary onClick={() => setPackageModalOpen(true)}><span className="inline-flex items-center gap-1"><Plus className="h-4 w-4" /> New Package</span></ActionButton>
+                    <ActionButton primary onClick={() => { setEditingPackage(null); setPackageModalOpen(true) }}><span className="inline-flex items-center gap-1"><Plus className="h-4 w-4" /> New Package</span></ActionButton>
                     <ActionButton onClick={() => setVendorModalOpen(true)}><span className="inline-flex items-center gap-1"><UserPlus className="h-4 w-4" /> New Vendor</span></ActionButton>
                   </div>
                 )}
@@ -517,7 +517,7 @@ export function ProjectDetail({
               </div>
               <TableShell>
                 <table className="w-full min-w-[1000px] text-left text-sm">
-                  <thead className="bg-eih-cream-soft"><tr><TH>Package</TH><TH>Vendor</TH><TH right>Contract Value</TH><TH>Progress</TH><TH>Status</TH><TH right>Overdue</TH></tr></thead>
+                  <thead className="bg-eih-cream-soft"><tr><TH>Package</TH><TH>Vendor</TH><TH right>Contract Value</TH><TH>Progress</TH><TH>Status</TH><TH right>Overdue</TH>{canManage && <TH right>Actions</TH>}</tr></thead>
                   <tbody className="divide-y divide-eih-line/40">
                     {filteredPackages.map(pkg => {
                       const pct = pkg.totalMilestones ? Math.round(((pkg.completedMilestones || 0) / pkg.totalMilestones) * 100) : 0
@@ -539,10 +539,11 @@ export function ProjectDetail({
                               ? <span className="inline-flex items-center gap-1 font-semibold text-eih-danger"><AlertTriangle className="h-3.5 w-3.5" /> {pkg.overdueMilestones}</span>
                               : <span className="text-eih-muted">—</span>}
                           </TD>
+                          {canManage && <TD right><IconBtn onClick={() => { setEditingPackage(pkg); setPackageModalOpen(true) }} title="Edit package"><Edit className="h-3.5 w-3.5 text-eih-ink/70" /></IconBtn></TD>}
                         </tr>
                       )
                     })}
-                    {!filteredPackages.length && <EmptyRow colSpan={6} icon={Package} label={canManage ? 'No packages match — click "New Package" to add one.' : 'No packages match.'} />}
+                    {!filteredPackages.length && <EmptyRow colSpan={canManage ? 7 : 6} icon={Package} label={canManage ? 'No packages match — click "New Package" to add one.' : 'No packages match.'} />}
                   </tbody>
                 </table>
               </TableShell>
@@ -975,8 +976,8 @@ export function ProjectDetail({
             projectId={project.id} projectName={project.name} entry={editingReport}
             onSaved={() => refreshPlanning()} onCreated={handleReportCreated} />
 
-          <PackageRegistrationModal open={packageModalOpen} onClose={() => setPackageModalOpen(false)} userId={user?.id || ''}
-            portfolios={portfolioList} projects={projectList} vendors={vendorList} defaultProjectId={project.id} onSaved={() => refreshProcurement()} />
+<PackageRegistrationModal open={packageModalOpen} onClose={() => { setPackageModalOpen(false); setEditingPackage(null) }} userId={user?.id || ''}
+  portfolios={portfolioList} projects={projectList} vendors={vendorList} defaultProjectId={project.id} initialPackage={editingPackage} onSaved={() => refreshProcurement()} />
 
           <VendorRegistrationModal open={vendorModalOpen} onClose={() => setVendorModalOpen(false)} userId={user?.id || ''}
             onSaved={() => { refreshProcurement(); refreshVendors() }} />

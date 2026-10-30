@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/user'
 import { executeQuery } from '@/lib/db'
+import { ActualCostQueries } from '@/lib/db/queries/actualCosts'
 
 export async function POST(request: NextRequest) {
   try {
@@ -100,6 +101,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json()
+    const [before] = await executeQuery<any>('SELECT status FROM procurement_packages WHERE id = $1::uuid', [id])
 
     const fields: string[] = []
     const values: any[] = []
@@ -165,6 +167,28 @@ export async function PATCH(request: NextRequest) {
 
     if (!row) {
       return NextResponse.json({ error: 'Package not found' }, { status: 404 })
+    }
+
+    // A completed package becomes an actual cost exactly once. The reference marker
+    // makes repeated edits and retries idempotent.
+    if (String(row.status).toUpperCase() === 'COMPLETED' && String(before?.status).toUpperCase() !== 'COMPLETED') {
+      const referenceNumber = `PROCUREMENT_PACKAGE:${id}`
+      const [existingCost] = await executeQuery<any>('SELECT id FROM actual_costs WHERE reference_number = $1 LIMIT 1', [referenceNumber])
+      if (!existingCost) {
+        await ActualCostQueries.create({
+          projectId: row.project_id,
+          amount: Number(row.contract_value) || 0,
+          period: new Date().toISOString().slice(0, 10),
+          costType: 'PROCUREMENT',
+          description: `Completed procurement package: ${row.title}`,
+          referenceNumber,
+          vendorId: row.vendor_id || undefined,
+          approvedBy: user.id,
+          status: 'APPROVED',
+          currency: 'USD',
+          exchangeRate: 1,
+        })
+      }
     }
 
     // Best-effort audit

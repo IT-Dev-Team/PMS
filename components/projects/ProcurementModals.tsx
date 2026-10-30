@@ -15,10 +15,10 @@ const emptyMilestones = (): Milestone[] => [0, 1, 2, 3].map(() => ({ title: '', 
 
 /* ============================ PACKAGE ============================ */
 export function PackageRegistrationModal({
-  open, onClose, userId, portfolios, projects, vendors, defaultProjectId, onSaved,
+  open, onClose, userId, portfolios, projects, vendors, defaultProjectId, initialPackage, onSaved,
 }: {
   open: boolean; onClose: () => void; userId: string
-  portfolios: any[]; projects: any[]; vendors: any[]; defaultProjectId?: string
+  portfolios: any[]; projects: any[]; vendors: any[]; defaultProjectId?: string; initialPackage?: any | null
   onSaved: () => void
 }) {
   const [step, setStep] = useState(1)
@@ -27,7 +27,7 @@ export function PackageRegistrationModal({
   const [selectedPortfolioId, setSelectedPortfolioId] = useState('')
   const [form, setForm] = useState({
     title: '', code: '', description: '', projectId: defaultProjectId || '', category: 'GOODS',
-    vendorId: '', contractValue: '', currency: 'USD', paymentSchedule: '',
+    vendorId: '', contractValue: '', currency: 'USD', paymentSchedule: '', status: 'DRAFT',
     startDate: '', endDate: '', deliveryDate: '', terms: '',
     milestones: emptyMilestones(), confirmAccuracy: false,
   })
@@ -36,13 +36,13 @@ export function PackageRegistrationModal({
     if (open) {
       setStep(1)
       setForm({
-        title: '', code: '', description: '', projectId: defaultProjectId || '', category: 'GOODS',
-        vendorId: '', contractValue: '', currency: 'USD', paymentSchedule: '',
-        startDate: '', endDate: '', deliveryDate: '', terms: '', milestones: emptyMilestones(), confirmAccuracy: false,
+        title: initialPackage?.title || '', code: initialPackage?.code || '', description: initialPackage?.description || '', projectId: initialPackage?.projectId || defaultProjectId || '', category: initialPackage?.category || 'GOODS',
+        vendorId: initialPackage?.vendorId || '', contractValue: String(initialPackage?.contractValue ?? initialPackage?.totalContractValue ?? ''), currency: initialPackage?.currency || 'USD', paymentSchedule: initialPackage?.paymentSchedule || '', status: initialPackage?.status || 'DRAFT',
+        startDate: initialPackage?.startDate?.slice(0, 10) || '', endDate: initialPackage?.endDate?.slice(0, 10) || '', deliveryDate: initialPackage?.deliveryDate?.slice(0, 10) || '', terms: initialPackage?.terms || '', milestones: emptyMilestones(), confirmAccuracy: Boolean(initialPackage),
       })
       setError(null)
     }
-  }, [open, defaultProjectId])
+  }, [open, defaultProjectId, initialPackage])
 
   const filteredProjects = useMemo(() => {
     if (!selectedPortfolioId) return projects
@@ -76,16 +76,23 @@ export function PackageRegistrationModal({
     if (s === 4 && !form.confirmAccuracy) { setError('Please confirm accuracy'); return false }
     setError(null); return true
   }
-  const next = () => validateStep(step) && setStep(step + 1)
-  const back = () => { setStep(step - 1); setError(null) }
+  const next = () => {
+    if (initialPackage && step === 2) { setStep(4); return }
+    if (validateStep(step)) setStep(step + 1)
+  }
+  const back = () => { setStep(initialPackage && step === 4 ? 2 : step - 1); setError(null) }
 
   const submit = async () => {
     if (!validateStep(4)) return
     setBusy(true); setError(null)
     try {
-      const res = await fetch('/api/procurement/packages', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const editing = Boolean(initialPackage?.id)
+      const res = await fetch(editing ? `/api/procurement/packages?id=${initialPackage.id}` : '/api/procurement/packages', {
+        method: editing ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editing ? {
+          title: form.title, description: form.description, contractValue: parseFloat(form.contractValue), vendorId: form.vendorId || null,
+          paymentSchedule: form.paymentSchedule, terms: form.terms, status: form.status,
+        } : {
           ...form, createdBy: userId, contractValue: parseFloat(form.contractValue),
           milestones: form.milestones.filter(m => m.title.trim() && m.dueDate).map(m => ({
             title: m.title, dueDate: new Date(m.dueDate).toISOString(), percentage: parseFloat(String(m.percentage)),
@@ -94,7 +101,7 @@ export function PackageRegistrationModal({
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'Failed to register package')
-      toast.success('Package registered'); onSaved(); onClose()
+      toast.success(editing ? 'Package updated' : 'Package registered'); onSaved(); onClose()
     } catch (err) { setError(err instanceof Error ? err.message : 'Failed to register package') } finally { setBusy(false) }
   }
 
@@ -102,14 +109,14 @@ export function PackageRegistrationModal({
   const steps = ['Basic', 'Vendor & Value', 'Milestones', 'Review']
 
   return (
-    <ModalShell wide title="Register Procurement Package" subtitle="Create a new package with milestones and vendor." onClose={onClose}
+    <ModalShell wide title={initialPackage ? 'Edit Procurement Package' : 'Register Procurement Package'} subtitle={initialPackage ? 'Update package details, status, and cost treatment.' : 'Create a new package with milestones and vendor.'} onClose={onClose}
       footer={<>
         <button type="button" onClick={back} disabled={step === 1} className="eih-btn eih-btn-outline disabled:opacity-40">Back</button>
         {step < 4 ? (
           <button type="button" onClick={next} className="eih-btn eih-btn-gold">Next</button>
         ) : (
           <button type="button" onClick={submit} disabled={busy} className="eih-btn eih-btn-primary disabled:opacity-60">
-            {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Registering…</> : <><Save className="h-4 w-4" /> Register Package</>}
+            {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving…</> : <><Save className="h-4 w-4" /> {initialPackage ? 'Save Changes' : 'Register Package'}</>}
           </button>
         )}
       </>}>
@@ -134,7 +141,8 @@ export function PackageRegistrationModal({
             <div><label className={label}>Package Title *</label><input className={field} value={form.title} onChange={e => setField('title', e.target.value)} /></div>
             <div><label className={label}>Package Code</label><input className={field} value={form.code} onChange={e => setField('code', e.target.value.toUpperCase())} placeholder="e.g. PKG-001" /></div>
           </div>
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-3">
+            <div><label className={label}>Status</label><select className={field} value={form.status} onChange={e => setField('status', e.target.value)}>{['DRAFT', 'RELEASED', 'AWARDED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'].map(s => <option key={s}>{s}</option>)}</select></div>
             <div><label className={label}>Category</label>
               <select className={field} value={form.category} onChange={e => setField('category', e.target.value)}>
                 {PACKAGE_CATEGORIES.map(c => <option key={c}>{c}</option>)}
@@ -217,7 +225,7 @@ export function PackageRegistrationModal({
             <h3 className="mb-3 font-serif text-base text-eih-ink">Review Package</h3>
             <div className="grid gap-3 md:grid-cols-2">
               {([
-                ['Title', form.title], ['Code', form.code], ['Category', form.category],
+                ['Title', form.title], ['Code', form.code], ['Status', form.status], ['Category', form.category],
                 ['Project', projects.find(p => p.id === form.projectId)?.name],
                 ['Vendor', vendors.find(v => v.id === form.vendorId)?.name],
                 ['Contract Value', form.contractValue ? `${form.currency} ${parseFloat(form.contractValue).toLocaleString()}` : '—'],

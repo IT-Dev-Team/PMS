@@ -200,10 +200,10 @@ export function getDelay(item: PlanItem, status: Status): { label: string; tone:
   return late > 0 ? { label: `${late}d overdue`, tone: 'late' } : { label: 'On track', tone: 'ok' }
 }
 
-/** Actual cost and budget rolled up from sub tasks to main tasks to phases (USD, rejected costs excluded). */
+/** Actual cost and budget rolled up from sub tasks to main tasks to phases (USD, all logged costs included). */
 export function costMaps(items: PlanItem[], byId: Map<string, PlanItem>, costs: any[]) {
   const own = new Map<string, number>()
-  costs.filter(c => String(c.status).toUpperCase() !== 'REJECTED').forEach(c => { const k = String(c.planId); own.set(k, (own.get(k) || 0) + toUsd(c)) })
+  costs.forEach(c => { const k = String(c.planId); own.set(k, (own.get(k) || 0) + toUsd(c)) })
   const actual = new Map<string, number>(), budget = new Map<string, number>()
   const calc = (it: PlanItem) => {
     if (actual.has(it.id)) return
@@ -230,16 +230,17 @@ export function computePlanModel(planning: any, fallbackItems: any[] | null | un
   const leafTasks = items.filter(i => !i.isPhase && !i.children.length)
   const { actual, budget } = costMaps(items, byId, costs)
   const roots = items.filter(i => i.level === 0)
-  // Planned value  = the plan's total budget.
-  // Earned value   = the budget of the plan items that are COMPLETED.
-  // Planned to date = what the schedule says should be finished by today (drives the schedule index).
-  const rootBudget = roots.reduce((s, r) => s + (budget.get(r.id) || 0), 0)
-  const hasBudgets = items.length > 0 && rootBudget > 0
-  const pv = hasBudgets ? rootBudget : null
-  const ev = hasBudgets ? roots.reduce((s, r) => s + rollValue(r, byId, budget, t => leafProgress(t) / 100), 0) : null
-  const pvToDate = hasBudgets ? roots.reduce((s, r) => s + rollValue(r, byId, budget, t => plannedOf(t, byId) / 100), 0) : null
-  // Every logged cost on the project (even ones not attached to a plan item), in USD, rejected excluded.
-  const costsTotal = costs.filter(c => String(c.status).toUpperCase() !== 'REJECTED').reduce((s, c) => s + toUsd(c), 0)
+  // PV is the sum of every budgeted plan item. EV is the sum of budgets for completed items.
+  // Use leaf items when the plan is hierarchical so parent rollups are not double-counted.
+  const valueItems = leafTasks.length ? leafTasks : items.filter(i => !i.isPhase)
+  const planBudget = valueItems.reduce((s, item) => s + Math.max(0, item.budget), 0)
+  const completedBudget = valueItems.reduce((s, item) => s + (effectiveStatus(item, byId) === 'Completed' ? Math.max(0, item.budget) : 0), 0)
+  const hasBudgets = items.length > 0 && planBudget > 0
+  const pv = hasBudgets ? planBudget : null
+  const ev = hasBudgets ? completedBudget : null
+  const pvToDate = hasBudgets ? planBudget : null
+  // Actual cost is every logged cost on the project, converted to USD.
+  const costsTotal = costs.reduce((s, c) => s + toUsd(c), 0)
   const valid = (d: string) => !isNaN(new Date(d).getTime())
   // Why a figure is zero: counts the page can show when something looks wrong.
   const diag = {
@@ -257,7 +258,7 @@ export function computePlanModel(planning: any, fallbackItems: any[] | null | un
     completedTasks: leafTasks.filter(t => t.status === 'Completed').length,
     overdue: leafTasks.filter(t => t.status !== 'Completed' && getDelay(t, t.status).tone === 'late').length,
     overBudget: items.filter(i => costState(budget.get(i.id) || 0, actual.get(i.id) || 0).tone === 'over' && !i.children.length).length,
-    totalBudget: roots.reduce((s, r) => s + (budget.get(r.id) || 0), 0),
+    totalBudget: planBudget,
     totalActual: roots.reduce((s, r) => s + (actual.get(r.id) || 0), 0),
   }
 }

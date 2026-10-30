@@ -2,42 +2,25 @@
 // Single source of truth for project figures. ProjectDetail and the CEO dashboard BOTH call computeEvm()
 // with the same inputs, so they cannot disagree.
 //
-// Order of trust for each figure:  API value (if > 0) -> derived from the plan -> project record -> null
-//   BAC (budget) = API budget, else project.budget, else the plan's total budget
-//   PV           = BAC x weighted planned % (time elapsed per task, rolled up with task weights)
-//   EV           = BAC x weighted actual progress %
-//   AC           = API actual cost, else logged costs (rejected excluded, converted to USD), else project.actualCost
+// All figures are derived from operational records: plan item budgets and logged costs.
+// PV = sum of plan item budgets, EV = sum of completed plan item budgets, AC = sum of all logged costs.
 //   CPI = EV/AC   SPI = EV/PV   EAC = BAC/CPI   VAC = BAC - EAC
 
 export type ProjectRaw = { financial: any | null; planning: any | null }
-export type PlanFigures = { bac: number | null; progress: number | null; planned: number | null; actual: number | null }
+export type PlanFigures = { bac: number | null; pv: number | null; ev: number | null; actual: number | null }
 
 const n = (v: any): number | null => (v == null || v === '' || isNaN(Number(v)) ? null : Number(v))
-// Helper to treat 0 from API as empty so we fall back to plan calculations
-const positiveOrNull = (v: any): number | null => {
-  const num = n(v)
-  return num !== null && num > 0 ? num : null
-}
-
 export function financialSource(financial: any, projectId: string) {
   return (financial?.projectFinancials || []).find((i: any) => String(i.id) === String(projectId)) || {}
 }
 
-export function computeEvm(source: any, project: any, plan?: PlanFigures | null) {
-  const src = source || {}
-  
-  // Use positiveOrNull so an API '0' falls through to project.budget or plan.bac
-  const bac = positiveOrNull(src.budget) ?? positiveOrNull(project?.budget) ?? (plan?.bac && plan.bac > 0 ? plan.bac : null)
-  
-  // Calculate plan-based PV/EV first, so we can fall back to them if API is 0
-  const planPv = bac != null && plan?.planned != null ? (bac * plan.planned) / 100 : null
-  const planEv = bac != null && plan?.progress != null ? (bac * plan.progress) / 100 : null
-  
-  const pv = positiveOrNull(src.plannedValue ?? src.pv) ?? planPv
-  const ev = positiveOrNull(src.earnedValue ?? src.ev) ?? planEv
-  
-  // For AC, check plan.actual (logged costs) before project record
-  const ac = positiveOrNull(src.actualCost ?? src.ac) ?? (plan?.actual && plan.actual > 0 ? plan.actual : n(project?.actualCost))
+export function computeEvm(_source: any, _project: any, plan?: PlanFigures | null) {
+  // EVM is derived exclusively from the plan and cost ledger. Stored financial estimates
+  // must not override the operational truth shown in the dashboard.
+  const bac = plan?.bac != null ? plan.bac : null
+  const pv = plan?.pv != null ? plan.pv : null
+  const ev = plan?.ev != null ? plan.ev : null
+  const ac = plan?.actual != null ? plan.actual : null
   
   const cpi = ev != null && ac ? ev / ac : null
   const spi = ev != null && pv ? ev / pv : null
