@@ -6,11 +6,11 @@ import { ActualCostQueries } from '@/lib/db/queries/actualCosts';
 // ============ GET ============
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ projectId: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = await require2Auth('PROJECT_MANAGER','CEO');
-    const { projectId } = await params;
+    const { id: projectId } = await params;
 
     if (!projectId) {
       return NextResponse.json(
@@ -102,13 +102,15 @@ export async function POST(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ projectId: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = await requireAuth('PROJECT_MANAGER');
-    const { projectId } = await params;
+    const { id: projectId } = await params;
     const body = await request.json();
-    const { id, ...updateData } = body;
+    const queryId = new URL(request.url).searchParams.get('id');
+    const { id: bodyId, ...updateData } = body;
+    const id = bodyId || queryId;
 
     if (!id) {
       return NextResponse.json({ error: 'Cost ID is required' }, { status: 400 });
@@ -124,11 +126,11 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ projectId: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = await requireAuth('PROJECT_MANAGER');
-    const { projectId } = await params;
+    const { id: projectId } = await params;
     const url = new URL(request.url);
     const id = url.searchParams.get('id');
 

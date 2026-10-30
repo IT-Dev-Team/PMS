@@ -234,7 +234,14 @@ export function computePlanModel(planning: any, fallbackItems: any[] | null | un
   // Use leaf items when the plan is hierarchical so parent rollups are not double-counted.
   const valueItems = leafTasks.length ? leafTasks : items.filter(i => !i.isPhase)
   const planBudget = valueItems.reduce((s, item) => s + Math.max(0, item.budget), 0)
-  const completedBudget = valueItems.reduce((s, item) => s + (effectiveStatus(item, byId) === 'Completed' ? Math.max(0, item.budget) : 0), 0)
+  const completedBudget = roots.reduce((total, root) => {
+    const leaves = leavesOf(root, byId).filter(item => !item.isPhase)
+    if (root.isPhase) {
+      if (effectiveStatus(root, byId) === 'Completed') return total + Math.max(0, budget.get(root.id) || 0)
+      return total + leaves.reduce((sum, item) => sum + (effectiveStatus(item, byId) === 'Completed' ? Math.max(0, item.budget) : 0), 0)
+    }
+    return total + leaves.reduce((sum, item) => sum + (effectiveStatus(item, byId) === 'Completed' ? Math.max(0, item.budget) : 0), 0)
+  }, 0)
   const hasBudgets = items.length > 0 && planBudget > 0
   const pv = hasBudgets ? planBudget : null
   const ev = hasBudgets ? completedBudget : null
@@ -493,10 +500,10 @@ function PlanManager({ project, items, byId, mutate, onClose, startEditId }: {
   const roots = items.filter(i => i.level === 0)
 
   return (
-    <Shell wide title="Manage plan" subtitle="Four fixed phases, each with main tasks and sub tasks. Weights decide how much each item counts toward progress." onClose={onClose}
+    <Shell wide title="Manage plan" subtitle="Build the plan in three simple steps: set up phases, add main tasks, then add optional sub tasks. Status and budgets drive progress and earned value." onClose={onClose}
       footer={<>
         <button onClick={() => { setErrors({}); setDraft(blank('main')) }} className={btnGold}><Plus className="h-4 w-4" /> Add main task</button>
-        <button onClick={() => { setErrors({}); setDraft(blank('sub')) }} disabled={!mains.length} title={mains.length ? '' : 'Add a main task first'} className={btnLine}><Plus className="h-4 w-4" /> Add sub task</button>
+        <button onClick={() => { setErrors({}); setDraft(blank('sub')) }} disabled={!mains.length} title={mains.length ? 'Add a sub task under a main task' : 'Add a main task first'} className={btnLine}><Plus className="h-4 w-4" /> Add sub task</button>
         <button onClick={onClose} className={btnLine}>Done</button>
       </>}>
       <div className="mb-5 grid gap-3 md:grid-cols-4">
@@ -545,9 +552,9 @@ function PlanManager({ project, items, byId, mutate, onClose, startEditId }: {
         </div>
 
         <aside className="rounded-xl border border-eih-line/70 bg-eih-cream-soft p-4">
-          {!draft ? <p className="text-sm text-eih-muted">Choose an item to edit, or add a main task or sub task.</p> : (
+          {!draft ? <div className="space-y-3"><div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-eih-gold">Quick guide</p><h3 className="mt-1 font-serif text-base text-eih-ink">Shape the work plan</h3></div><p className="text-sm leading-5 text-eih-muted">Choose a phase to configure it, or add a main task. Add sub tasks only when the work needs another level of detail.</p><div className="rounded-lg border border-eih-line/70 bg-card p-3 text-xs leading-5 text-eih-muted"><b className="text-eih-ink">Tip:</b> Use weight to show relative importance and budget to make PV and EV measurable.</div></div> : (
             <div className="space-y-3">
-              <h3 className="font-serif text-base text-eih-ink">{draft.mode === 'edit' ? 'Edit' : 'New'} {KIND_LABEL[draft.kind].toLowerCase()}{draft.kind === 'phase' ? `: ${draft.phaseName}` : ''}</h3>
+              <div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-eih-gold">{draft.mode === 'edit' ? 'Update existing item' : 'Add to plan'}</p><h3 className="mt-1 font-serif text-base text-eih-ink">{draft.mode === 'edit' ? 'Edit' : 'New'} {KIND_LABEL[draft.kind].toLowerCase()}{draft.kind === 'phase' ? `: ${draft.phaseName}` : ''}</h3><p className="mt-1 text-xs leading-5 text-eih-muted">Required fields are marked with *. Dates and budget should match the approved project baseline.</p></div>
 
               {draft.kind !== 'phase' && (
                 <div><label className={lab}>Phase *</label>
