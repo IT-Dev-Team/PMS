@@ -9,6 +9,7 @@ import {
   CalendarDays,
   CheckCircle2,
   ChevronDown,
+  FileText,
   CircleDollarSign,
   Loader2,
   MessageCircle,
@@ -257,7 +258,7 @@ export function AIAdvisorModal({ isOpen, onClose }: AIAdvisorModalProps) {
       const createResponse = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: trimmed }),
+        body: JSON.stringify({ message: trimmed, projects }),
       });
       const created = await createResponse.json();
       if (!createResponse.ok || !created.taskId) throw new Error(created.error || "Could not start Manus AI.");
@@ -366,8 +367,11 @@ export function AIAdvisorModal({ isOpen, onClose }: AIAdvisorModalProps) {
             </div>
 
             <div className="border-t border-border bg-eih-cream-soft/35 p-4 sm:p-5">
-              <div className="mb-3 flex flex-wrap gap-2">
-                {[
+          <div className="mb-3 flex flex-wrap gap-2">
+            <button type="button" onClick={() => void askQuestion("Generate an executive project portfolio report from the supplied project JSON. Summarize overall health, cost and schedule risks, priorities, and recommended CEO actions. Do not invent missing values.")} disabled={loading || sending} className="inline-flex items-center gap-2 rounded-lg border border-eih-gold/50 bg-eih-gold/10 px-3 py-2 text-xs font-semibold text-eih-gold-dark transition hover:bg-eih-gold/20 disabled:cursor-not-allowed disabled:opacity-50">
+              <FileText className="h-3.5 w-3.5" /> Generate AI report
+            </button>
+            {[
                   "Which projects are at risk?",
                   "Summarize the budget",
                   "What is the delivery status?",

@@ -7,10 +7,14 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const message = typeof body?.message === "string" ? body.message.trim() : "";
+    const projects = Array.isArray(body?.projects) ? body.projects : [];
     if (!message) return NextResponse.json({ error: "Message is required." }, { status: 400 });
 
+    const projectData = JSON.stringify(projects);
+    if (projectData.length > 500_000) return NextResponse.json({ error: "Project data is too large to analyze in one request." }, { status: 413 });
+
     const task = await createTask({
-      content: `You are the EIH Project Office AI Advisor. Answer concisely and clearly for an executive. Use the connected Project Office context when available.\n\nUser question: ${message}`,
+      content: `You are the EIH Project Office AI Advisor. Answer concisely and clearly for an executive. Analyze the project data JSON below directly; do not claim to use context that was not provided. If the data does not support an answer, say what is missing.\n\nProject data JSON:\n${projectData}\n\nUser question: ${message}`,
       responseMode: "text",
       interactiveMode: false,
       title: "EIH AI Advisor",
