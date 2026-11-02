@@ -35,6 +35,19 @@ type AdvisorMessage = {
   attachments?: AdvisorAttachment[];
 };
 
+async function readJsonResponse(response: Response) {
+  const contentType = response.headers.get("content-type") || "";
+  const body = await response.text();
+  if (!contentType.includes("application/json")) {
+    throw new Error(response.status === 401 || response.status === 403 ? "Please sign in again to use the AI Advisor." : `Advisor returned an unexpected response (${response.status}).`);
+  }
+  try {
+    return JSON.parse(body);
+  } catch {
+    throw new Error("Advisor returned invalid JSON. Please try again.");
+  }
+}
+
 type ProjectRecord = Record<string, any>;
 
 const initialMessage: AdvisorMessage = {
@@ -286,20 +299,20 @@ export function AIAdvisorModal({ isOpen, onClose }: AIAdvisorModalProps) {
     setError(null);
     try {
       const contextResponse = await fetch("/api/projects/context", { cache: "no-store" });
-      const context = contextResponse.ok ? await contextResponse.json() : { projects };
+      const context = contextResponse.ok ? await readJsonResponse(contextResponse) : { projects };
       const createResponse = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: trimmed, projects: context.projects ?? projects, generatedAt: context.generatedAt }),
       });
-      const created = await createResponse.json();
+      const created = await readJsonResponse(createResponse);
       if (!createResponse.ok || !created.taskId) throw new Error(created.error || "Could not start Manus AI.");
 
       const deadline = Date.now() + 120000;
       while (Date.now() < deadline) {
         await new Promise((resolve) => window.setTimeout(resolve, 2000));
         const response = await fetch(`/api/chat?taskId=${encodeURIComponent(created.taskId)}&t=${Date.now()}`, { cache: "no-store" });
-        const result = await response.json();
+        const result = await readJsonResponse(response);
         if (!response.ok) throw new Error(result.error || "Could not read Manus AI response.");
         if (result.status === "done") {
           setMessages((current) => [...current, { id: `assistant-${Date.now()}`, role: "assistant", text: result.reply, attachments: result.attachments }]);

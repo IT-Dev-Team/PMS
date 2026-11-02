@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { require2Auth } from "@/lib/auth/user";
+import { getCurrentUser } from "@/lib/auth/user";
 import { executeQuery } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -19,8 +19,12 @@ function ragFor(project: any, financial: any, risks: any[], issues: any[], tasks
 
 export async function GET() {
   try {
-    const user = await require2Auth("PROJECT_MANAGER", "CEO");
-    const role = String(user?.role || "").toUpperCase();
+    const user = await getCurrentUser();
+    if (!user) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+    const role = String(user.role || "").toUpperCase();
+    if (!user.isAdmin && !role.includes("CEO") && !role.includes("PROJECT_MANAGER") && !role.includes("PORTFOLIO_MANAGER")) {
+      return NextResponse.json({ error: "You do not have access to project context." }, { status: 403 });
+    }
     const canSeeAll = Boolean(user?.isAdmin) || role.includes("CEO") || role.includes("ADMIN") || role.includes("PORTFOLIO_MANAGER");
     const projects = await executeQuery(
       `SELECT p.*, u.name as manager_name
