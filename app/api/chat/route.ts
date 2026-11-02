@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createTask, getTaskDetail, getTaskMessages } from "@/lib/manus-service";
+import { createTask, getTaskDetail, getTaskMessages, uploadFile } from "@/lib/manus-service";
 
 export const dynamic = "force-dynamic";
 
@@ -10,11 +10,12 @@ export async function POST(request: NextRequest) {
     const projects = Array.isArray(body?.projects) ? body.projects : [];
     if (!message) return NextResponse.json({ error: "Message is required." }, { status: 400 });
 
-    const projectData = JSON.stringify(projects);
-    if (projectData.length > 500_000) return NextResponse.json({ error: "Project data is too large to analyze in one request." }, { status: 413 });
+    const projectData = JSON.stringify(projects, null, 2);
+    const projectFile = await uploadFile("eih-project-context.json", new Blob([projectData], { type: "application/json" }));
 
     const task = await createTask({
-      content: `You are the EIH Project Office AI Advisor. Answer concisely and clearly for an executive. Analyze the project data JSON below directly; do not claim to use context that was not provided. If the data does not support an answer, say what is missing.\n\nProject data JSON:\n${projectData}\n\nUser question: ${message}`,
+      content: `You are the EIH Project Office AI Advisor. Answer concisely and clearly for an executive. Analyze only the attached eih-project-context.json file. Do not claim to use context that was not provided. If the data does not support an answer, say what is missing.\n\nUser question: ${message}`,
+      fileIds: [projectFile.fileId],
       responseMode: "text",
       interactiveMode: false,
       title: "EIH AI Advisor",
