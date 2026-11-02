@@ -39,8 +39,10 @@ export async function GET(request: NextRequest) {
     if (task.status === "error") return NextResponse.json({ status: "error", error: "Manus AI could not complete the request." });
 
     const result = await getTaskMessages(taskId, { order: "desc", limit: 20, verbose: true });
-    const reply = result.messages.find((message) => message.type === "assistant_message")?.assistant_message?.content;
-    return NextResponse.json({ status: "done", reply: reply || "Manus AI completed the task without a text response." });
+    const assistantMessage = result.messages.find((message) => message.type === "assistant_message");
+    const reply = assistantMessage?.assistant_message?.content;
+    const attachments = assistantMessage?.assistant_message?.attachments ?? [];
+    return NextResponse.json({ status: "done", reply: reply || "Manus AI completed the task without a text response.", attachments });
   } catch (error) {
     console.error("[Manus chat] task polling failed", error);
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not read the Manus response." }, { status: 500 });

@@ -26,10 +26,13 @@ type AIAdvisorModalProps = {
   onClose: () => void;
 };
 
+type AdvisorAttachment = { filename?: string; url?: string; content_type?: string };
+
 type AdvisorMessage = {
   id: string;
   role: "assistant" | "user";
   text: string;
+  attachments?: AdvisorAttachment[];
 };
 
 type ProjectRecord = Record<string, any>;
@@ -168,6 +171,33 @@ function answerFromContext(question: string, projects: ProjectRecord[]) {
   return `I have context for ${projects.length} project records, including their available status, progress, budget, actual-cost, timeline, and health fields. Try “Which projects are at risk?”, “Summarize the budget”, or ask about a specific project by name.`;
 }
 
+function renderInlineMarkdown(value: string) {
+  const parts = value.split(/(\[[^\]]+\]\(https?:\/\/[^)]+\)|\*\*[^*]+\*\*|`[^`]+`)/g);
+  return parts.map((part, index) => {
+    const link = part.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/);
+    if (link) return <a key={index} href={link[2]} target="_blank" rel="noreferrer" className="font-semibold text-eih-green underline underline-offset-2 hover:text-eih-gold-dark">{link[1]}</a>;
+    if (part.startsWith("**") && part.endsWith("**")) return <strong key={index}>{part.slice(2, -2)}</strong>;
+    if (part.startsWith("`") && part.endsWith("`")) return <code key={index} className="rounded bg-eih-green/10 px-1 py-0.5 font-mono text-[0.9em]">{part.slice(1, -1)}</code>;
+    return <span key={index}>{part}</span>;
+  });
+}
+
+function MarkdownMessage({ text, attachments = [] }: { text: string; attachments?: AdvisorAttachment[] }) {
+  return <div className="space-y-2">
+    {text.split(/\r?\n/).map((line, index) => {
+      const trimmed = line.trim();
+      if (!trimmed) return <div key={index} className="h-1" />;
+      if (trimmed.startsWith("### ")) return <h4 key={index} className="font-semibold text-eih-ink">{renderInlineMarkdown(trimmed.slice(4))}</h4>;
+      if (trimmed.startsWith("## ")) return <h3 key={index} className="font-semibold text-eih-ink">{renderInlineMarkdown(trimmed.slice(3))}</h3>;
+      if (trimmed.startsWith("# ")) return <h2 key={index} className="font-serif text-base font-semibold text-eih-ink">{renderInlineMarkdown(trimmed.slice(2))}</h2>;
+      if (/^[-*] /.test(trimmed)) return <li key={index} className="ml-4 list-disc pl-1">{renderInlineMarkdown(trimmed.slice(2))}</li>;
+      if (/^\d+\. /.test(trimmed)) return <li key={index} className="ml-4 list-decimal pl-1">{renderInlineMarkdown(trimmed.replace(/^\d+\. /, ""))}</li>;
+      return <p key={index}>{renderInlineMarkdown(line)}</p>;
+    })}
+    {attachments.length > 0 && <div className="border-t border-eih-line/60 pt-2"><p className="mb-1 text-xs font-semibold text-eih-muted">Attachments</p>{attachments.map((attachment, index) => attachment.url ? <a key={`${attachment.url}-${index}`} href={attachment.url} target="_blank" rel="noreferrer" className="block truncate text-xs font-medium text-eih-green underline underline-offset-2">{attachment.filename || `Attachment ${index + 1}`}</a> : null)}</div>}
+  </div>;
+}
+
 export function AIAdvisorModal({ isOpen, onClose }: AIAdvisorModalProps) {
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [portfolios, setPortfolios] = useState<ProjectRecord[]>([]);
@@ -270,7 +300,7 @@ export function AIAdvisorModal({ isOpen, onClose }: AIAdvisorModalProps) {
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || "Could not read Manus AI response.");
         if (result.status === "done") {
-          setMessages((current) => [...current, { id: `assistant-${Date.now()}`, role: "assistant", text: result.reply }]);
+          setMessages((current) => [...current, { id: `assistant-${Date.now()}`, role: "assistant", text: result.reply, attachments: result.attachments }]);
           return;
         }
         if (result.status === "error") throw new Error(result.error || "Manus AI could not complete the request.");
@@ -348,8 +378,8 @@ export function AIAdvisorModal({ isOpen, onClose }: AIAdvisorModalProps) {
                   <div
                     className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-6 ${message.role === "user" ? "rounded-br-md bg-eih-green text-white" : "rounded-bl-md bg-eih-cream-soft text-eih-ink"}`}
                   >
-                    {message.text}
-                  </div>
+  <MarkdownMessage text={message.text} attachments={message.attachments} />
+  </div>
                 </div>
               ))}
               {(loading || sending) && (
