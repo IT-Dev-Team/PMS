@@ -285,10 +285,12 @@ export function AIAdvisorModal({ isOpen, onClose }: AIAdvisorModalProps) {
     setSending(true);
     setError(null);
     try {
+      const contextResponse = await fetch("/api/projects/context", { cache: "no-store" });
+      const context = contextResponse.ok ? await contextResponse.json() : { projects };
       const createResponse = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: trimmed, projects }),
+        body: JSON.stringify({ message: trimmed, projects: context.projects ?? projects, generatedAt: context.generatedAt }),
       });
       const created = await createResponse.json();
       if (!createResponse.ok || !created.taskId) throw new Error(created.error || "Could not start Manus AI.");
