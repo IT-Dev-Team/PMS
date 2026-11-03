@@ -223,7 +223,7 @@ export function DashboardHeader({ user, onMenuToggle }: DashboardHeaderProps) {
                 );
                 return link.onClick ? (
                   <button
-                    key={link.href}
+                    key={`${link.label}-${link.href}`}
                     type="button"
                     onClick={link.onClick}
                     className={classes}
@@ -232,7 +232,7 @@ export function DashboardHeader({ user, onMenuToggle }: DashboardHeaderProps) {
                   </button>
                 ) : (
                   <Link
-                    key={link.href}
+                    key={`${link.label}-${link.href}`}
                     href={link.href}
                     aria-current={active ? "page" : undefined}
                     className={classes}
@@ -462,7 +462,7 @@ export function DashboardHeader({ user, onMenuToggle }: DashboardHeaderProps) {
             const active = isActive(link.href);
             return link.onClick ? (
               <button
-                key={link.href}
+                key={`${link.label}-${link.href}`}
                 type="button"
                 onClick={() => {
                   setShowMobileNav(false);
@@ -481,7 +481,7 @@ export function DashboardHeader({ user, onMenuToggle }: DashboardHeaderProps) {
               </button>
             ) : (
               <Link
-                key={link.href}
+                key={`${link.label}-${link.href}`}
                 href={link.href}
                 onClick={() => setShowMobileNav(false)}
                 className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition ${
