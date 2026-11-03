@@ -1,15 +1,11 @@
 import { requireAuth } from "@/lib/auth/user";
 import { CreateProjectWizard } from "@/components/projects/CreateProjectWizard";
 import { PortfolioQueries } from "@/lib/db/queries/protfolio";
-import { DepartmentQueries } from "@/lib/db/queries/department";
 
 export default async function NewProjectPage() {
   const user = await requireAuth("PROJECT_MANAGER");
 
-  const [portfolios, departments] = await Promise.all([
-    PortfolioQueries.getActivePortfolios(),
-    DepartmentQueries.findAll(),
-  ]);
+  const portfolios = await PortfolioQueries.getActivePortfolios();
 
   return (
     <section className="fade-in space-y-6">
@@ -41,7 +37,6 @@ export default async function NewProjectPage() {
       <CreateProjectWizard
         userId={user.id}
         portfolios={portfolios}
-        departments={departments}
       />
     </section>
   );

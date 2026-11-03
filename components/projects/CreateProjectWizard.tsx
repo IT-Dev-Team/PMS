@@ -31,14 +31,12 @@ import toast from "react-hot-toast";
 interface CreateProjectWizardProps {
   userId: string;
   portfolios?: any[];
-  departments?: any[];
   onClose?: () => void; // ← NEW
 }
 
 export function CreateProjectWizard({
   userId,
   portfolios = [],
-  departments = [],
   onClose, // ← NEW
 }: CreateProjectWizardProps) {
   const router = useRouter();
@@ -51,7 +49,6 @@ export function CreateProjectWizard({
     code: "",
     description: "",
     portfolioId: "",
-    departmentId: "",
     projectType: "CAPITAL",
 
     // Step 2: Timeline & Scope
@@ -317,24 +314,7 @@ export function CreateProjectWizard({
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-eih-ink mb-1">
-                  Department
-                </label>
-                <select
-                  value={formData.departmentId}
-                  onChange={(e) => handleChange("departmentId", e.target.value)}
-                  className="w-full px-4 py-2 border border-border rounded-xl bg-card text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-eih-gold"
-                >
-                  <option value="">Select Department</option>
-                  {departments.map((d: any) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-eih-ink mb-1">
                   Project Type

@@ -17,7 +17,6 @@ export function CreateProjectModal({
   userId,
 }: CreateProjectModalProps) {
   const [portfolios, setPortfolios] = useState<any[]>([]);
-  const [departments, setDepartments] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadedOnce, setLoadedOnce] = useState(false);
 
@@ -29,15 +28,10 @@ export function CreateProjectModal({
     (async () => {
       setLoading(true);
       try {
-        const [pRes, dRes] = await Promise.all([
-          fetch("/api/portfolios?active=true"),
-          fetch("/api/departments"),
-        ]);
+        const pRes = await fetch("/api/portfolios?active=true");
         const pJson = await pRes.json().catch(() => []);
-        const dJson = await dRes.json().catch(() => []);
         if (cancelled) return;
         setPortfolios(pJson.data ?? pJson ?? []);
-        setDepartments(dJson.data ?? dJson ?? []);
         setLoadedOnce(true);
       } catch (err) {
         console.error("Failed to load wizard data", err);
@@ -122,9 +116,8 @@ export function CreateProjectModal({
           ) : (
             <CreateProjectWizard
               userId={userId}
-              portfolios={portfolios}
-              departments={departments}
-              onClose={onClose}
+          portfolios={portfolios}
+          onClose={onClose}
             />
           )}
         </div>

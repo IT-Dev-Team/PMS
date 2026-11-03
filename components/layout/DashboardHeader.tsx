@@ -18,8 +18,6 @@ import {
   X,
   Inbox,
 } from "lucide-react";
-import { CreateProjectModal } from "@/components/projects/CreateProjectModal";
-import { CreatePortfolioModal } from "@/components/portfolio/CreatePortfolioModal";
 import { useNotifications } from "@/hooks/useNotifications";
 import { setNavTarget } from "@/hooks/useDashboardNav";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
@@ -53,8 +51,6 @@ export function DashboardHeader({ user, onMenuToggle }: DashboardHeaderProps) {
   const [showBell, setShowBell] = useState(false);
   const [showMobileNav, setShowMobileNav] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
-  const [showProjectModal, setShowProjectModal] = useState(false);
-  const [showPortfolioModal, setShowPortfolioModal] = useState(false);
   const [showAIAdvisor, setShowAIAdvisor] = useState(false);
 
   // Close dropdowns on click outside or Escape
@@ -140,7 +136,7 @@ export function DashboardHeader({ user, onMenuToggle }: DashboardHeaderProps) {
     (n) => n.type === "ISSUE_CEO_ATTENTION" && !n.read,
   ).length;
 
-  const navLinks = [
+  const navLinks: Array<any> = [
     {
       label: "Dashboard",
       href: "/dashboard",
@@ -149,18 +145,16 @@ export function DashboardHeader({ user, onMenuToggle }: DashboardHeaderProps) {
       
     },
     {
-      label: "New Project",
-      href: "/projects/new",
+      label: "Manage Projects",
+      href: "/management",
       icon: PlusCircle,
       show: isProjectManager,
-      onClick: () => setShowProjectModal(true),
     },
     {
-      label: "New Sector",
-      href: "/portfolios/new",
+      label: "Manage Sectors",
+      href: "/management",
       icon: PlusCircle,
       show: canManagePortfolios,
-      onClick: () => setShowPortfolioModal(true),
     },
   ].filter((l) => l.show);
 
@@ -506,16 +500,6 @@ export function DashboardHeader({ user, onMenuToggle }: DashboardHeaderProps) {
         </nav>
       </div>
 
-      <CreateProjectModal
-        isOpen={showProjectModal}
-        onClose={() => setShowProjectModal(false)}
-        userId={user.id}
-      />
-      <CreatePortfolioModal
-        isOpen={showPortfolioModal}
-        onClose={() => setShowPortfolioModal(false)}
-        userId={user.id}
-      />
       <AIAdvisorModal isOpen={showAIAdvisor} onClose={() => setShowAIAdvisor(false)} />
     </>
   );
