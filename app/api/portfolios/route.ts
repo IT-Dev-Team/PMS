@@ -125,6 +125,25 @@ export async function POST(request: NextRequest) {
   }
 }
 
+export async function PATCH(request: NextRequest) {
+  try {
+    await require2Auth('PROJECT_MANAGER', 'CEO');
+    const id = request.nextUrl.searchParams.get('id');
+    if (!id) return NextResponse.json({ error: 'Portfolio id is required.' }, { status: 400 });
+    const body = await request.json();
+    const allowed = ['name', 'description', 'status'];
+    const entries = Object.entries(body).filter(([key, value]) => allowed.includes(key) && value !== undefined);
+    if (!entries.length) return NextResponse.json({ error: 'No editable fields supplied.' }, { status: 400 });
+    const values = entries.map(([, value]) => value);
+    const assignments = entries.map(([key], index) => `${key} = $${index + 1}`).join(', ');
+    const rows = await executeQuery(`UPDATE portfolios SET ${assignments}, updated_at = NOW() WHERE id = $${values.length + 1} RETURNING *`, [...values, id]);
+    if (!rows.length) return NextResponse.json({ error: 'Sector not found.' }, { status: 404 });
+    return NextResponse.json({ success: true, data: rows[0] });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unable to update sector.' }, { status: 500 });
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth('PROJECT_MANAGER');
